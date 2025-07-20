@@ -18,4 +18,4 @@ class CustomerRead(BaseModel):
 
   class Config: 
     orm_mode = True
-  
+
