@@ -2,32 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from schemas.user import UserCreate, UserRead
 from models.user import User
-from core.security import hash_password
+from core.security import hash_password, create_access_token
 from database.session import SessionLocal, get_db
 from dependencies import get_current_user
+from datetime import timedelta
 
 router = APIRouter(prefix="/users", tags=["users"])
-
-# Create
-@router.post("/", response_model=UserRead)
-def create_user(user: UserCreate, db: Session = Depends(get_db)):
-  # 이메일 중복 체크
-  existing_user = db.query(User).filter(User.email == user.email).first()
-  if existing_user:
-    raise HTTPException(status_code=400, detail="이미 가입된 이메일입니다.")
-  
-  new_user = User(
-     email=user.email,
-     name=user.name,
-     password=hash_password(user.password),
-     store_name=user.store_name,
-     address=user.address,
-     address_detail=user.address_detail
-  )
-  db.add(new_user)
-  db.commit()
-  db.refresh(new_user)
-  return new_user
 
 # Read(전체)
 @router.get("/", response_model=UserRead)

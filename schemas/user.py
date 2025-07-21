@@ -4,12 +4,12 @@ from datetime import datetime
 
 # 회원가입 요청용 (입력 스키마)
 class UserCreate(BaseModel):
-  name: Optional[str]
+  name: str
   email: EmailStr
   password: str
-  store_name: Optional[str]
-  address: Optional[str]
-  address_detail: Optional[str]
+  store_name: Optional[str] = None
+  address: Optional[str] = None
+  address_detail: Optional[str] = None
 
 # 유저 조회 응답용 (출력 스키마)
 class UserRead(BaseModel):

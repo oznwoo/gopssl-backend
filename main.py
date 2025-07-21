@@ -16,7 +16,7 @@ app.include_router(auth.router)
 Base.metadata.create_all(bind=engine)
 
 origins = [
-  'http://localhost:8000',
+  'http://localhost:3000',
 ]
 
 app.add_middleware(
