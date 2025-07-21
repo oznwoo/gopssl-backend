@@ -19,7 +19,10 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
   new_user = User(
      email=user.email,
      name=user.name,
-     password=hash_password(user.password)
+     password=hash_password(user.password),
+     store_name=user.store_name,
+     address=user.address,
+     address_detail=user.address_detail
   )
   db.add(new_user)
   db.commit()
