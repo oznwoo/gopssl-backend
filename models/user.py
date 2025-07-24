@@ -12,4 +12,5 @@ class User(Base):
   store_name = Column(String(100))
   address = Column(Text)
   address_detail = (Column(Text))
+  zip_code = Column(Text)
   created_at = Column(DateTime(timezone=True), server_default=func.now())
