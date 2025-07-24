@@ -14,7 +14,6 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 @router.post("/signup", response_model=Token)
 def create_user(user: UserCreate, db: Session = Depends(get_db)):
   # 이메일 중복 체크
-  print(user)
   existing_user = db.query(User).filter(User.email == user.email).first()
   if existing_user:
     raise HTTPException(status_code=400, detail="이미 가입된 이메일입니다.")
