@@ -17,12 +17,14 @@ class Sale(Base):
 
   treatments = relationship("SaleTreatment", back_populates="sale", cascade="all, delete")
 
+
 class SaleTreatment(Base):
-  __tablename__ = "sale_treatments"
+    __tablename__ = "sale_treatments"
 
-  id = Column(Integer, primary_key=True, index=True)
-  sale_id = Column(Integer, ForeignKey("sales.id", ondelete="CASCADE"), nullable=False)
-  treatment_name = Column(String(100))
-  price = Column(Integer)
+    id = Column(Integer, primary_key=True, index=True)
+    sale_id = Column(Integer, ForeignKey("sales.id", ondelete="CASCADE"), nullable=False)
+    treatment_id = Column(Integer, ForeignKey("treatments.id", ondelete="SET NULL"), nullable=True)
+    price = Column(Integer, nullable=False)  # 실제 결제된 가격
 
-  sale = relationship("Sale", back_populates="treatments")
+    sale = relationship("Sale", back_populates="treatments")
+    treatment = relationship("Treatment", back_populates="sale_treatments")

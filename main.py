@@ -1,9 +1,6 @@
 from fastapi import FastAPI
 from database.session import engine, Base
-from routers import user, customer, sale, auth, address
-from models.user import User
-from models.customer import Customer
-from models.sale import Sale, SaleTreatment
+from routers import user, customer, sale, auth, address, treatment
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
@@ -13,6 +10,7 @@ app.include_router(customer.router)
 app.include_router(sale.router)
 app.include_router(auth.router)
 app.include_router(address.router)
+app.include_router(treatment.router)
 
 Base.metadata.create_all(bind=engine)
 
