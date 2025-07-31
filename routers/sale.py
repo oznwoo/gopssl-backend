@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from database.session import get_db
 from models.sale import Sale, SaleTreatment
 from models.treatment import Treatment  # treatment 관계용
-from schemas.sale import SaleCreate, SaleRead
-from datetime import datetime, time, timedelta
-from typing import Optional
+from schemas.sale import SaleCreate, SaleRead, SaleTreatmentRead
+from datetime import datetime, time
+from typing import Optional, List
 
 router = APIRouter(prefix="/sales", tags=["sales"])
 
@@ -62,7 +62,7 @@ def create_sale(sale: SaleCreate, db: Session = Depends(get_db)):
 def read_sales(db: Session = Depends(get_db)):
     return db.query(Sale).all()
 
-@router.get("/by_date", response_model=list[SaleRead])
+@router.get("/by_date", response_model=List[SaleRead])
 def read_sales_by_date(
     date: Optional[str] = Query(None, description="조회할 날짜 (YYYY-MM-DD)"),
     db: Session = Depends(get_db),
@@ -75,12 +75,32 @@ def read_sales_by_date(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
 
-    start_dt = datetime.combine(target_date, datetime.min.time())
-    end_dt = datetime.combine(target_date, datetime.max.time())
-
     sales = (
         db.query(Sale)
-        .filter(Sale.sale_date >= start_dt, Sale.sale_date <= end_dt)
+        .filter(Sale.sale_date == target_date)
+        .options(
+            joinedload(Sale.customer),               # 고객 이름용
+            joinedload(Sale.treatments).joinedload(Sale.treatments.property.mapper.class_.treatment)  # 시술 이름용
+        )
         .all()
     )
-    return sales
+
+    sale_read_list = []
+    for sale in sales:
+        sale_dict = sale.__dict__.copy()
+        sale_dict["customer_name"] = sale.customer.name  # ✅ 고객 이름 직접 할당
+
+        sale_dict["treatments"] = [
+            SaleTreatmentRead(
+                id=st.id,
+                sale_id=st.sale_id,
+                treatment_id=st.treatment_id,
+                treatment_name=st.treatment.name,
+                price=st.price
+            )
+            for st in sale.treatments
+        ]
+
+        sale_read_list.append(SaleRead(**sale_dict))
+
+    return sale_read_list

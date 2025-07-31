@@ -1,7 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional, List, Dict
 from datetime import datetime, date
-from schemas.treatment import Treatment
 
 # -------- SaleTreatment --------
 
@@ -12,10 +11,10 @@ class SaleTreatmentBase(BaseModel):
 class SaleTreatmentCreate(SaleTreatmentBase):
     pass
 
-class SaleTreatment(SaleTreatmentBase):
+class SaleTreatmentRead(SaleTreatmentBase):
     id: int
     sale_id: int
-    treatment: Treatment
+    treatment_name: str  
 
     class Config:
         orm_mode = True
@@ -30,18 +29,19 @@ class SaleCreate(BaseModel):
     payment_type: Optional[str]
     total_amount: Optional[int]
     treatments: List[SaleTreatmentCreate]
-    extra_prices: Optional[Dict[str, int]] = {}  # ✅ 기장추가를 카테고리 기준으로 받음
+    extra_prices: Optional[Dict[str, int]] = {}
 
 class SaleRead(BaseModel):
     id: int
     user_id: int
     customer_id: int
+    customer_name: str 
     sale_date: date
     detail: Optional[str]
     payment_type: Optional[str]
     total_amount: Optional[int]
     created_at: datetime
-    treatments: List[SaleTreatment]
+    treatments: List[SaleTreatmentRead]  
     extra_prices: Optional[Dict[str, int]] = {}
 
     class Config:

@@ -16,7 +16,7 @@ class Sale(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     extra_prices = Column(JSON, nullable=True) 
-
+    customer = relationship("Customer", back_populates="sales")
     treatments = relationship("SaleTreatment", back_populates="sale", cascade="all, delete")
 
 
