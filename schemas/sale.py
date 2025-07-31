@@ -1,7 +1,7 @@
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime, date
-from schemas.treatment import Treatment  # ✅ 반드시 import
+from schemas.treatment import Treatment
 
 # -------- SaleTreatment --------
 
@@ -15,7 +15,7 @@ class SaleTreatmentCreate(SaleTreatmentBase):
 class SaleTreatment(SaleTreatmentBase):
     id: int
     sale_id: int
-    treatment: Treatment  # ✅ nested 응답 시 Treatment 객체 포함
+    treatment: Treatment
 
     class Config:
         orm_mode = True
@@ -30,6 +30,7 @@ class SaleCreate(BaseModel):
     payment_type: Optional[str]
     total_amount: Optional[int]
     treatments: List[SaleTreatmentCreate]
+    extra_prices: Optional[Dict[str, int]] = {}  # ✅ 기장추가를 카테고리 기준으로 받음
 
 class SaleRead(BaseModel):
     id: int
@@ -40,7 +41,8 @@ class SaleRead(BaseModel):
     payment_type: Optional[str]
     total_amount: Optional[int]
     created_at: datetime
-    treatments: List[SaleTreatment]  # ✅ 이게 맞음
+    treatments: List[SaleTreatment]
+    extra_prices: Optional[Dict[str, int]] = {}
 
     class Config:
         orm_mode = True
