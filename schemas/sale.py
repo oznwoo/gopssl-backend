@@ -43,6 +43,10 @@ class SaleRead(BaseModel):
     created_at: datetime
     treatments: List[SaleTreatmentRead]  
     extra_prices: Optional[Dict[str, int]] = {}
+    num_of_visits: Optional[int]
+    first_visit: Optional[date] = None 
+    previous_visit: Optional[date] = None 
 
-    class Config:
-        orm_mode = True
+    model_config = {
+        "from_attributes": True
+    }

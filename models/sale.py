@@ -13,6 +13,7 @@ class Sale(Base):
     detail = Column(Text)
     payment_type = Column(String(20))
     total_amount = Column(Integer)
+    num_of_visits = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     extra_prices = Column(JSON, nullable=True) 
