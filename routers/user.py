@@ -24,7 +24,7 @@ def get_me(current_user: User = Depends(get_current_user)):
 def read_user(user_id: int, db: Session = Depends(get_db)):
   user = db.query(User.id == user_id).first()
   if not user:
-    raise HTTPException(status_code=404, detail="사용자를 찾읗 수 없습니다.")
+    raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
   return user
 
 # Update

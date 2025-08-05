@@ -14,7 +14,7 @@ class SaleTreatmentCreate(SaleTreatmentBase):
 class SaleTreatmentRead(SaleTreatmentBase):
     id: int
     sale_id: int
-    treatment_name: str  
+    treatment_name: str
 
     class Config:
         orm_mode = True
@@ -30,6 +30,9 @@ class SaleCreate(BaseModel):
     total_amount: Optional[int]
     treatments: List[SaleTreatmentCreate]
     extra_prices: Optional[Dict[str, int]] = {}
+
+class SaleUpdate(SaleCreate):
+    id: int
 
 class SaleRead(BaseModel):
     id: int

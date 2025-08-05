@@ -6,7 +6,7 @@ from database.session import get_db
 from models.sale import Sale, SaleTreatment
 from models.treatment import Treatment  # treatment 관계용
 from models.customer import Customer
-from schemas.sale import SaleCreate, SaleRead, SaleTreatmentRead
+from schemas.sale import SaleCreate, SaleRead, SaleTreatmentRead, SaleUpdate
 from datetime import datetime, time
 from typing import Optional, List
 
@@ -41,7 +41,7 @@ def create_sale(sale: SaleCreate, db: Session = Depends(get_db)):
         db.query(
             func.min(Sale.sale_date))
         .filter(Sale.customer_id == sale.customer_id)
-        .one()
+        .scalar()
     )
     # 이전 방문일 구하기 (현재 방문일 제외한 가장 최근 방문일)
     previous_visit = (
@@ -179,7 +179,8 @@ def read_sales_by_date(
                 sale_id=st.sale_id,
                 treatment_id=st.treatment_id,
                 treatment_name=st.treatment.name if st.treatment else None,
-                price=st.price
+                price=st.price,
+                treatment_category=st.treatment.category
             )
             for st in sale.treatments
         ]
@@ -187,3 +188,206 @@ def read_sales_by_date(
         sale_read_list.append(SaleRead(**sale_dict))
 
     return sale_read_list
+
+@router.get("/{sale_id}", response_model=SaleRead)
+def read_sales_by_id(sale_id: int, db: Session = Depends(get_db)):
+    sale = (
+        db.query(Sale)
+        .filter(Sale.id == sale_id)
+        .options(
+            joinedload(Sale.customer),
+            joinedload(Sale.treatments).joinedload(SaleTreatment.treatment)
+        )
+        .first()
+    )
+    if not sale:
+        raise HTTPException(status_code=404, detail="매출 정보를 찾을 수 없습니다.")
+
+    # 방문일 범위 계산
+    first_visit = (
+        db.query(func.min(Sale.sale_date))
+        .filter(Sale.customer_id == sale.customer_id)
+        .scalar()
+    )
+
+    previous_visit = (
+        db.query(func.max(Sale.sale_date))
+        .filter(
+            Sale.customer_id == sale.customer_id,
+            Sale.sale_date < sale.sale_date  # 현재 sale 날짜보다 이전
+        )
+        .scalar()
+    )
+
+    sale_dict = jsonable_encoder(sale)
+    sale_dict["customer_name"] = sale.customer.name if sale.customer else "알 수 없음"
+    sale_dict["num_of_visits"] = sale.num_of_visits
+    sale_dict["first_visit"] = first_visit
+    sale_dict["previous_visit"] = previous_visit
+    sale_dict["treatments"] = [
+        {
+            "id": st.id,
+            "sale_id": st.sale_id,
+            "treatment_id": st.treatment_id,
+            "treatment_name": st.treatment.name if st.treatment else None,
+            "price": st.price
+        }
+        for st in sale.treatments
+    ]
+
+    return SaleRead(**sale_dict)
+
+
+# Update
+@router.put("/", response_model=SaleRead)
+def update_sale(sale: SaleUpdate, db: Session = Depends(get_db)):
+    # 기존 매출 조회 (id 기준)
+    existing_sale = db.query(Sale).filter(Sale.id == sale.id).first()
+    if not existing_sale:
+        raise HTTPException(status_code=404, detail="매출이 존재하지 않습니다.")
+
+    # 날짜 파싱
+    input_date = sale.sale_date
+    if isinstance(input_date, str):
+        sale_date_only = datetime.strptime(input_date, "%Y-%m-%d").date()
+    else:
+        sale_date_only = input_date
+
+    today = datetime.now().date()
+    if sale_date_only == today:
+        sale_date_with_time = datetime.now()
+    else:
+        sale_date_with_time = datetime.combine(sale_date_only, time.min)
+
+    # --- 방문 회차 계산 처리 ---
+
+    # 고객 아이디가 바뀌었는지 확인
+    customer_id_changed = existing_sale.customer_id != sale.customer_id
+
+    # 기존 고객 방문수 -1 (기존 고객이 있다면)
+    if customer_id_changed:
+        # 기존 고객 방문수 업데이트 (기존 방문수 -1)
+        prev_count = (
+            db.query(func.count(Sale.id))
+            .filter(Sale.customer_id == existing_sale.customer_id)
+            .scalar()
+        )
+        if prev_count and prev_count > 0:
+            # num_of_visits 필드가 과거에 저장되어 있으면 업데이트하는 등 필요 시 추가 작업 가능
+
+            # 예: 기존 방문수에서 직접 빼는 것이 아니라, null로 처리하거나 실제 로직에 따라 조절 가능
+
+            # 여기서는 별도의 작업 없이 유지하되, 후속 저장 때 새 고객 방문수를 올림
+
+            pass
+
+        # 새로운 고객 방문수 계산 (기존 방문 수 +1)
+        visit_count = (
+            db.query(func.count(Sale.id))
+            .filter(Sale.customer_id == sale.customer_id)
+            .scalar()
+        )
+        current_visit_number = visit_count + 1
+    else:
+        # 고객이 바뀌지 않으면 기존 방문수 유지
+        current_visit_number = existing_sale.num_of_visits
+
+    # 최초 방문일 계산
+    first_visit = (
+        db.query(func.min(Sale.sale_date))
+        .filter(Sale.customer_id == sale.customer_id)
+        .scalar()
+    )
+    # 이전 방문일 계산 (이번 방문일 제외)
+    previous_visit = (
+        db.query(func.max(Sale.sale_date))
+        .filter(
+            Sale.customer_id == sale.customer_id,
+            Sale.sale_date < sale_date_with_time
+        )
+        .scalar()
+    )
+
+    # 기존 매출 데이터 업데이트
+    existing_sale.user_id = sale.user_id
+    existing_sale.customer_id = sale.customer_id
+    existing_sale.sale_date = sale_date_with_time
+    existing_sale.detail = sale.detail
+    existing_sale.payment_type = sale.payment_type
+    existing_sale.total_amount = sale.total_amount
+    existing_sale.extra_prices = sale.extra_prices
+    existing_sale.num_of_visits = current_visit_number
+
+    db.commit()
+
+    # 기존 시술 모두 삭제 (Update 시 교체 처리)
+    db.query(SaleTreatment).filter(SaleTreatment.sale_id == existing_sale.id).delete()
+    db.commit()
+
+    # 새 시술 추가
+    for treatment_data in sale.treatments:
+        treatment = db.query(Treatment).get(treatment_data.treatment_id)
+        if not treatment:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Treatment ID {treatment_data.treatment_id} not found"
+            )
+        db_treatment = SaleTreatment(
+            sale_id=existing_sale.id,
+            treatment_id=treatment_data.treatment_id,
+            price=treatment_data.price,
+        )
+        db.add(db_treatment)
+    db.commit()
+
+    # 시술 목록 조회 (treatment_name 포함)
+    db_treatments = (
+        db.query(SaleTreatment)
+        .filter(SaleTreatment.sale_id == existing_sale.id)
+        .join(SaleTreatment.treatment)
+        .all()
+    )
+
+    # 고객 이름 조회
+    customer = db.query(Customer).get(existing_sale.customer_id)
+    customer_name = customer.name if customer else "알 수 없음"
+
+    # 응답객체 구성
+    sale_read = SaleRead.model_validate(
+        {
+            **existing_sale.__dict__,
+            "treatments": [
+                SaleTreatmentRead(
+                    id=st.id,
+                    sale_id=st.sale_id,
+                    treatment_id=st.treatment_id,
+                    treatment_name=st.treatment.name if st.treatment else "알 수 없음",
+                    price=st.price,
+                )
+                for st in db_treatments
+            ],
+            "customer_name": customer_name,
+            "num_of_visits": current_visit_number,
+            "first_visit": first_visit,
+            "previous_visit": previous_visit,
+        },
+        from_attributes=True,
+    )
+
+    return sale_read
+
+
+# Delete
+@router.delete("/{sale_id}", response_model=dict)
+def delete_sale(sale_id: int, db: Session = Depends(get_db)):
+    sale = db.query(Sale).filter(Sale.id == sale_id).first()
+    if not sale:
+        raise HTTPException(status_code=404, detail="매출 정보를 찾을 수 없습니다.")
+
+    # 관련 SaleTreatment 레코드들도 삭제(외래키 설정에 따라 자동 삭제될 수도 있음)
+    db.query(SaleTreatment).filter(SaleTreatment.sale_id == sale_id).delete()
+
+    db.delete(sale)
+    db.commit()
+
+    return {"message": "매출 정보가 삭제되었습니다."}

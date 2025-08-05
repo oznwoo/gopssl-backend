@@ -14,4 +14,4 @@ class Customer(Base):
   created_at = Column(DateTime(timezone=True), server_default=func.now())
 
    # ✅ 역참조 관계
-  sales = relationship("Sale", back_populates="customer")
+  sales = relationship("Sale", back_populates="customer", cascade="all, delete-orphan")
