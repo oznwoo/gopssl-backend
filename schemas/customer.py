@@ -17,8 +17,9 @@ class CustomerRead(BaseModel):
   name: Optional[str]
   phone_number: Optional[str] = None
   detail: Optional[str] = None
+  num_of_visits: Optional[int] = None
   created_at: datetime
 
-  class Config: 
-    orm_mode = True
+  class Config:
+      from_attributes = True  # ✅ Pydantic 2.x 대응
 
