@@ -6,7 +6,9 @@ from database.session import get_db
 from models.sale import Sale, SaleTreatment
 from models.treatment import Treatment  # treatment 관계용
 from models.customer import Customer
+from models.user import User
 from schemas.sale import SaleCreate, SaleRead, SaleTreatmentRead, SaleUpdate
+from dependencies import get_current_user
 from datetime import datetime, time
 from typing import Optional, List
 
@@ -14,7 +16,11 @@ router = APIRouter(prefix="/sales", tags=["sales"])
 
 
 @router.post("/", response_model=SaleRead)
-def create_sale(sale: SaleCreate, db: Session = Depends(get_db)):
+def create_sale(sale: SaleCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # 현재 로그인한 사용자만 매출 생성 가능하도록 검증
+    if sale.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="자신의 매출만 생성할 수 있습니다.")
+
     # 날짜 파싱
     input_date = sale.sale_date
     if isinstance(input_date, str):
@@ -122,13 +128,14 @@ def create_sale(sale: SaleCreate, db: Session = Depends(get_db)):
     return sale_read
 
 @router.get("/", response_model=list[SaleRead])
-def read_sales(db: Session = Depends(get_db)):
-    return db.query(Sale).all()
+def read_sales(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return db.query(Sale).filter(Sale.user_id == current_user.id).all()
 
 @router.get("/by_date", response_model=List[SaleRead])
 def read_sales_by_date(
     date: Optional[str] = Query(None, description="조회할 날짜 (YYYY-MM-DD)"),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     if not date:
         raise HTTPException(status_code=400, detail="date query parameter is required")
@@ -141,6 +148,7 @@ def read_sales_by_date(
     sales = (
         db.query(Sale)
         .filter(Sale.sale_date == target_date)
+        .filter(Sale.user_id == current_user.id)
         .options(
             joinedload(Sale.customer),
             joinedload(Sale.treatments).joinedload(SaleTreatment.treatment)
@@ -190,10 +198,11 @@ def read_sales_by_date(
     return sale_read_list
 
 @router.get("/{sale_id}", response_model=SaleRead)
-def read_sales_by_id(sale_id: int, db: Session = Depends(get_db)):
+def read_sales_by_id(sale_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     sale = (
         db.query(Sale)
         .filter(Sale.id == sale_id)
+        .filter(Sale.user_id == current_user.id)
         .options(
             joinedload(Sale.customer),
             joinedload(Sale.treatments).joinedload(SaleTreatment.treatment)
@@ -240,11 +249,15 @@ def read_sales_by_id(sale_id: int, db: Session = Depends(get_db)):
 
 # Update
 @router.put("/", response_model=SaleRead)
-def update_sale(sale: SaleUpdate, db: Session = Depends(get_db)):
+def update_sale(sale: SaleUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     # 기존 매출 조회 (id 기준)
     existing_sale = db.query(Sale).filter(Sale.id == sale.id).first()
     if not existing_sale:
         raise HTTPException(status_code=404, detail="매출이 존재하지 않습니다.")
+
+    # 현재 로그인한 사용자만 매출 수정 가능하도록 검증
+    if existing_sale.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="자신의 매출만 수정할 수 있습니다.")
 
     # 날짜 파싱
     input_date = sale.sale_date
@@ -263,6 +276,10 @@ def update_sale(sale: SaleUpdate, db: Session = Depends(get_db)):
 
     # 고객 아이디가 바뀌었는지 확인
     customer_id_changed = existing_sale.customer_id != sale.customer_id
+
+    # 사용자 ID가 바뀌었는지 확인 (보안상 허용하지 않음)
+    if sale.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="자신의 매출만 수정할 수 있습니다.")
 
     # 기존 고객 방문수 -1 (기존 고객이 있다면)
     if customer_id_changed:
@@ -379,10 +396,14 @@ def update_sale(sale: SaleUpdate, db: Session = Depends(get_db)):
 
 # Delete
 @router.delete("/{sale_id}", response_model=dict)
-def delete_sale(sale_id: int, db: Session = Depends(get_db)):
+def delete_sale(sale_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     sale = db.query(Sale).filter(Sale.id == sale_id).first()
     if not sale:
         raise HTTPException(status_code=404, detail="매출 정보를 찾을 수 없습니다.")
+
+    # 현재 로그인한 사용자만 매출 삭제 가능하도록 검증
+    if sale.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="자신의 매출만 삭제할 수 있습니다.")
 
     # 관련 SaleTreatment 레코드들도 삭제(외래키 설정에 따라 자동 삭제될 수도 있음)
     db.query(SaleTreatment).filter(SaleTreatment.sale_id == sale_id).delete()

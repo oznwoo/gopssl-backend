@@ -3,7 +3,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import extract, func, and_
 from typing import Dict, List
 from models.sale import Sale
+from models.user import User
 from database.session import get_db
+from dependencies import get_current_user
 from datetime import datetime, date, timedelta
 from collections import defaultdict
 
@@ -13,9 +15,10 @@ router = APIRouter(prefix="/sales/statistics", tags=["sales"])
 def get_daily_sales_summary(
     year: int = Query(..., ge=2000, le=2100, description="조회할 연도"),
     month: int = Query(..., ge=1, le=12, description="조회할 월"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    # 해당 연,월의 날짜별 매출 합계 조회
+    # 해당 연,월의 날짜별 매출 합계 조회 - 현재 사용자의 매출만
     results = (
         db.query(
             Sale.sale_date,
@@ -24,6 +27,7 @@ def get_daily_sales_summary(
         .filter(
             extract("year", Sale.sale_date) == year,
             extract("month", Sale.sale_date) == month,
+            Sale.user_id == current_user.id  # 현재 사용자 필터링
         )
         .group_by(Sale.sale_date)
         .all()
@@ -40,19 +44,21 @@ def get_daily_sales_summary(
 def get_sales_summary(
     year: int = Query(..., ge=2000, le=2100),
     month: int = Query(..., ge=1, le=12),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     today = date.today()
     input_date = date(year, month, 1)
     is_current_month = today.year == year and today.month == month
     is_current_year = today.year == year
 
-    ### 1. 매출 유형 (payment_type 비율)
+    ### 1. 매출 유형 (payment_type 비율) - 현재 사용자의 매출만
     sales_in_month = (
         db.query(Sale.payment_type, func.sum(Sale.total_amount).label("total"))
         .filter(
             extract("year", Sale.sale_date) == year,
             extract("month", Sale.sale_date) == month,
+            Sale.user_id == current_user.id  # 현재 사용자 필터링
         )
         .group_by(Sale.payment_type)
         .all()
@@ -64,7 +70,7 @@ def get_sales_summary(
         if row.payment_type:
             payment_type_ratio[row.payment_type.lower()] = round(row.total / total_sum, 2)
 
-    ### 2. 월별 비교 (최근 4개월)
+    ### 2. 월별 비교 (최근 4개월) - 현재 사용자의 매출만
     monthly_comparison = []
     for i in range(3, -1, -1):
         target_date = date(year, month, 1)
@@ -86,7 +92,8 @@ def get_sales_summary(
             db.query(func.sum(Sale.total_amount))
             .filter(and_(
                 Sale.sale_date >= target_start,
-                Sale.sale_date < target_end
+                Sale.sale_date < target_end,
+                Sale.user_id == current_user.id  # 현재 사용자 필터링
             ))
             .scalar()
         ) or 0
@@ -97,7 +104,7 @@ def get_sales_summary(
             "total": int(total)
         })
 
-    ### 3. 연도별 비교
+    ### 3. 연도별 비교 - 현재 사용자의 매출만
     yearly_comparison = defaultdict(lambda: [0]*12)
     years = [year - 1, year] if not is_current_year else [year - 1, year]
 
@@ -115,7 +122,8 @@ def get_sales_summary(
                 db.query(func.sum(Sale.total_amount))
                 .filter(and_(
                     Sale.sale_date >= start,
-                    Sale.sale_date < end
+                    Sale.sale_date < end,
+                    Sale.user_id == current_user.id  # 현재 사용자 필터링
                 ))
                 .scalar()
             ) or 0

@@ -13,12 +13,13 @@ class UserCreate(BaseModel):
   zip_code: Optional[str] = None
 
 class UserUpdate(BaseModel):
-  name: str
-  email: EmailStr
-  store_name: str
-  address: str
+  name: Optional[str] = None
+  email: Optional[EmailStr] = None
+  password: Optional[str] = None
+  store_name: Optional[str] = None
+  address: Optional[str] = None
   address_detail: Optional[str] = None
-  zip_code: str
+  zip_code: Optional[str] = None
 
 # 유저 조회 응답용 (출력 스키마)
 class UserRead(BaseModel):
