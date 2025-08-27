@@ -30,20 +30,57 @@ def create_customer(customer: CustomerCreate, db: Session = Depends(get_db), cur
     return new_customer
 
 @router.get("/", response_model=list[CustomerRead])
-def read_customers(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    # 현재 로그인한 사용자의 고객만 조회
-    return db.query(Customer).filter(Customer.user_id == current_user.id).all()
+def read_customers(
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    # 현재 로그인한 사용자의 고객 조회
+    customers = db.query(Customer).filter(Customer.user_id == current_user.id).all()
+
+    result = []
+    for customer in customers:
+        # 가장 최근 판매 내역 가져오기
+        latest_sale = (
+            db.query(Sale)
+            .filter(Sale.customer_id == customer.id)
+            .order_by(Sale.created_at.desc())
+            .first()
+        )
+
+        customer_data = CustomerRead.model_validate(customer)
+        customer_data.num_of_visits = latest_sale.num_of_visits if latest_sale else None
+        result.append(customer_data)
+
+    return result
 
 
 @router.get("/{customer_id}", response_model=CustomerRead)
-def read_customers_by_Id(customer_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def read_customers_by_Id(
+    customer_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
     customer = db.query(Customer).filter(
         Customer.id == customer_id,
         Customer.user_id == current_user.id
     ).first()
+
     if not customer:
         raise HTTPException(status_code=404, detail="고객을 찾을 수 없습니다.")
-    return customer
+
+    # 가장 최근 판매 내역 가져오기
+    latest_sale = (
+        db.query(Sale)
+        .filter(Sale.customer_id == customer.id)
+        .order_by(Sale.created_at.desc())
+        .first()
+    )
+
+    customer_data = CustomerRead.model_validate(customer)
+    customer_data.num_of_visits = latest_sale.num_of_visits if latest_sale else None
+
+    return customer_data
+
 
 # Update
 @router.put("/{customer_id}", response_model=CustomerRead)
