@@ -247,6 +247,55 @@ def read_sales_by_id(sale_id: int, db: Session = Depends(get_db), current_user: 
     return SaleRead(**sale_dict)
 
 
+# 고객별 전체 매출 조회
+@router.get("/by_customer/{customer_id}", response_model=List[SaleRead])
+def read_sales_by_customer(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # 고객 존재 여부 체크
+    customer = (
+        db.query(Customer)
+        .filter(Customer.id == customer_id, Customer.user_id == current_user.id)
+        .first()
+    )
+    if not customer:
+        raise HTTPException(status_code=404, detail="고객 정보를 찾을 수 없습니다.")
+
+    # 해당 고객의 모든 매출 조회
+    sales = (
+        db.query(Sale)
+        .filter(Sale.customer_id == customer_id, Sale.user_id == current_user.id)
+        .options(
+            joinedload(Sale.customer),
+            joinedload(Sale.treatments).joinedload(SaleTreatment.treatment),
+        )
+        .order_by(Sale.sale_date.asc())
+        .all()
+    )
+
+    sale_read_list = []
+    for sale in sales:
+        sale_dict = jsonable_encoder(sale)
+
+        sale_dict["customer_name"] = sale.customer.name if sale.customer else "알 수 없음"
+        sale_dict["num_of_visits"] = sale.num_of_visits   # ✅ 해당 매출 당시 회차 그대로 사용
+        sale_dict["treatments"] = [
+            SaleTreatmentRead(
+                id=st.id,
+                sale_id=st.sale_id,
+                treatment_id=st.treatment_id,
+                treatment_name=st.treatment.name if st.treatment else None,
+                price=st.price,
+            )
+            for st in sale.treatments
+        ]
+        sale_read_list.append(SaleRead(**sale_dict))
+
+    return sale_read_list
+
+
 # Update
 @router.put("/", response_model=SaleRead)
 def update_sale(sale: SaleUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
