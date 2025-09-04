@@ -48,13 +48,11 @@ def get_sales_summary(
     current_user: User = Depends(get_current_user)
 ):
     today = date.today()
-    input_date = date(year, month, 1)
-    is_current_month = today.year == year and today.month == month
     is_current_year = today.year == year
 
-    ### 1. 매출 유형 (payment_type 비율) - 현재 사용자의 매출만
+    ### 1. 매출 유형 (payment_type 건수) - 현재 사용자의 매출만
     sales_in_month = (
-        db.query(Sale.payment_type, func.sum(Sale.total_amount).label("total"))
+        db.query(Sale.payment_type, func.count(Sale.id).label("count"))
         .filter(
             extract("year", Sale.sale_date) == year,
             extract("month", Sale.sale_date) == month,
@@ -64,11 +62,11 @@ def get_sales_summary(
         .all()
     )
 
-    total_sum = sum(row.total for row in sales_in_month)
-    payment_type_ratio = {}
+    payment_type_count = {}
     for row in sales_in_month:
         if row.payment_type:
-            payment_type_ratio[row.payment_type.lower()] = round(row.total / total_sum, 2)
+            payment_type_count[row.payment_type.lower()] = int(row.count)
+
 
     ### 2. 월별 비교 (최근 4개월) - 현재 사용자의 매출만
     monthly_comparison = []
@@ -129,9 +127,10 @@ def get_sales_summary(
             ) or 0
 
             yearly_comparison[str(y)][m - 1] = int(total)
-
+            
     return {
         "monthly_comparison": monthly_comparison,
         "yearly_comparison": yearly_comparison,
-        "payment_type_ratio": payment_type_ratio,
+        "payment_type_count": payment_type_count,
     }
+
