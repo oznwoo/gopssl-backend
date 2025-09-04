@@ -127,10 +127,35 @@ def get_sales_summary(
             ) or 0
 
             yearly_comparison[str(y)][m - 1] = int(total)
-            
+
+    ### 4. 지난달 오늘까지 매출 추가
+    # 지난달 계산
+    if month == 1:
+        last_month_year = year - 1
+        last_month = 12
+    else:
+        last_month_year = year
+        last_month = month - 1
+
+    # 지난달 1일부터 오늘 날짜의 일(day)까지
+    last_month_start = date(last_month_year, last_month, 1)
+    last_month_end_day = min(today.day, (date(year, month, 1) - timedelta(days=1)).day)  # 지난달 마지막 일과 비교
+    last_month_end = date(last_month_year, last_month, last_month_end_day) + timedelta(days=1)  # 포함
+
+    last_month_total = (
+        db.query(func.sum(Sale.total_amount))
+        .filter(and_(
+            Sale.sale_date >= last_month_start,
+            Sale.sale_date < last_month_end,
+            Sale.user_id == current_user.id
+        ))
+        .scalar()
+    ) or 0
+
     return {
         "monthly_comparison": monthly_comparison,
         "yearly_comparison": yearly_comparison,
         "payment_type_count": payment_type_count,
+        "last_month_until_today_total": int(last_month_total)  # 지난달 오늘까지 매출
     }
 
