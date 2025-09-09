@@ -42,23 +42,6 @@ def create_sale(sale: SaleCreate, db: Session = Depends(get_db), current_user: U
     )
     current_visit_number = visit_count + 1
 
-    # 최초/최신 방문일 계산
-    first_visit = (
-        db.query(
-            func.min(Sale.sale_date))
-        .filter(Sale.customer_id == sale.customer_id)
-        .scalar()
-    )
-    # 이전 방문일 구하기 (현재 방문일 제외한 가장 최근 방문일)
-    previous_visit = (
-        db.query(func.max(Sale.sale_date))
-        .filter(
-            Sale.customer_id == sale.customer_id,
-            Sale.sale_date < sale_date_with_time  # 핵심: 현재 방문일보다 이전만
-        )
-        .scalar()
-    )
-
     # 매출 생성
     db_sale = Sale(
         user_id=sale.user_id,
@@ -119,8 +102,6 @@ def create_sale(sale: SaleCreate, db: Session = Depends(get_db), current_user: U
             ],
             "customer_name": customer_name,
             "num_of_visits": current_visit_number,
-            "first_visit": first_visit,
-            "previous_visit": previous_visit,
         },
         from_attributes=True
     )
@@ -158,28 +139,11 @@ def read_sales_by_date(
 
     sale_read_list = []
     for sale in sales:
-        # 방문일 범위 계산
-        first_visit = (
-            db.query(func.min(Sale.sale_date))
-            .filter(Sale.customer_id == sale.customer_id)
-            .scalar()
-        )
 
-        # 이번 sale 제외, 가장 최근 방문일
-        previous_visit = (
-            db.query(func.max(Sale.sale_date))
-            .filter(
-                Sale.customer_id == sale.customer_id,
-                Sale.sale_date < sale.sale_date  # 현재 sale 날짜보다 이전
-            )
-            .scalar()
-        )
         
         sale_dict = jsonable_encoder(sale)
         sale_dict["customer_name"] = sale.customer.name if sale.customer else "알 수 없음"
         sale_dict["num_of_visits"] = sale.num_of_visits
-        sale_dict["first_visit"] = first_visit
-        sale_dict["previous_visit"] = previous_visit
 
         sale_dict["treatments"] = [
             SaleTreatmentRead(
@@ -212,27 +176,10 @@ def read_sales_by_id(sale_id: int, db: Session = Depends(get_db), current_user: 
     if not sale:
         raise HTTPException(status_code=404, detail="매출 정보를 찾을 수 없습니다.")
 
-    # 방문일 범위 계산
-    first_visit = (
-        db.query(func.min(Sale.sale_date))
-        .filter(Sale.customer_id == sale.customer_id)
-        .scalar()
-    )
-
-    previous_visit = (
-        db.query(func.max(Sale.sale_date))
-        .filter(
-            Sale.customer_id == sale.customer_id,
-            Sale.sale_date < sale.sale_date  # 현재 sale 날짜보다 이전
-        )
-        .scalar()
-    )
 
     sale_dict = jsonable_encoder(sale)
     sale_dict["customer_name"] = sale.customer.name if sale.customer else "알 수 없음"
     sale_dict["num_of_visits"] = sale.num_of_visits
-    sale_dict["first_visit"] = first_visit
-    sale_dict["previous_visit"] = previous_visit
     sale_dict["treatments"] = [
         {
             "id": st.id,
@@ -358,21 +305,6 @@ def update_sale(sale: SaleUpdate, db: Session = Depends(get_db), current_user: U
         # 고객이 바뀌지 않으면 기존 방문수 유지
         current_visit_number = existing_sale.num_of_visits
 
-    # 최초 방문일 계산
-    first_visit = (
-        db.query(func.min(Sale.sale_date))
-        .filter(Sale.customer_id == sale.customer_id)
-        .scalar()
-    )
-    # 이전 방문일 계산 (이번 방문일 제외)
-    previous_visit = (
-        db.query(func.max(Sale.sale_date))
-        .filter(
-            Sale.customer_id == sale.customer_id,
-            Sale.sale_date < sale_date_with_time
-        )
-        .scalar()
-    )
 
     # 기존 매출 데이터 업데이트
     existing_sale.user_id = sale.user_id
@@ -434,8 +366,6 @@ def update_sale(sale: SaleUpdate, db: Session = Depends(get_db), current_user: U
             ],
             "customer_name": customer_name,
             "num_of_visits": current_visit_number,
-            "first_visit": first_visit,
-            "previous_visit": previous_visit,
         },
         from_attributes=True,
     )

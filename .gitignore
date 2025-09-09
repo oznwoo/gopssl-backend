@@ -1,1 +1,5 @@
 .env
+
+core
+__pycache__
+venv

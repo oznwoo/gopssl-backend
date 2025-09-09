@@ -47,8 +47,6 @@ class SaleRead(BaseModel):
     treatments: List[SaleTreatmentRead]  
     extra_prices: Optional[Dict[str, int]] = {}
     num_of_visits: Optional[int]
-    first_visit: Optional[date] = None 
-    previous_visit: Optional[date] = None 
 
     model_config = {
         "from_attributes": True
