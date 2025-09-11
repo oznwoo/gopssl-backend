@@ -1,6 +1,4 @@
 from pydantic import BaseModel
-from typing import Optional
-from datetime import datetime
 
 
 class TreatmentBase(BaseModel):
@@ -10,6 +8,7 @@ class TreatmentBase(BaseModel):
 
 class TreatmentCreate(TreatmentBase):
     pass
+
 
 class Treatment(TreatmentBase):
     id: int
