@@ -52,6 +52,31 @@ def create_treatment(
     return db_treatment
 
 
+# 시술 수정 (자동으로 user_id 지정)
+@router.put("/{treatment_id}", response_model=Treatment, status_code=status.HTTP_201_CREATED)
+def update_treatment(
+    treatment_id: int,
+    updated_data: TreatmentCreate,
+    db: Session = Depends(get_db),
+    current_user: UserModel = Depends(get_current_user)
+):
+    treatment = db.query(TreatmentModel).filter(
+            TreatmentModel.id == treatment_id,
+            TreatmentModel.user_id == current_user.id
+        ).first()
+
+    if not treatment:
+        raise HTTPException(status_code=404, detail="Treatment not found")
+
+    for key, value in updated_data.dict(exclude_unset=True).items():
+        setattr(treatment, key, value)
+
+    db.commit()
+    db.refresh(treatment)
+    return treatment
+
+
+
 # 시술 삭제 (현재 로그인한 사용자만 삭제 가능)
 @router.delete("/{treatment_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_treatment(
