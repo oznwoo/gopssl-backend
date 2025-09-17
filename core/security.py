@@ -33,9 +33,6 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
 # JWT 검증
 def decode_access_token(token: str) -> Optional[dict]:
     try:
-        print(f"🔍 JWT 디코딩 시작: {token[:20]}...")  # 디버깅용 로그
-        print(f"🔍 SECRET_KEY: {SECRET_KEY[:10] if SECRET_KEY else 'None'}...")  # 디버깅용 로그
-        print(f"🔍 ALGORITHM: {ALGORITHM}")  # 디버깅용 로그
         
         # 만료 검증은 jose가 수행
         payload = jwt.decode(
@@ -44,7 +41,6 @@ def decode_access_token(token: str) -> Optional[dict]:
             algorithms=[ALGORITHM],
             options={"verify_exp": True}
         )
-        print(f"✅ JWT 디코딩 성공: {payload}")  # 디버깅용 로그
         return payload
     except ExpiredSignatureError as e:
         print(f"❌ JWT 만료 에러: {e}")  # 디버깅용 로그
