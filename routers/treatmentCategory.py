@@ -86,6 +86,9 @@ def delete_category(
     ).first()
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
+
+    if category.treatments:
+        raise HTTPException(status_code=400, detail="해당 카테고리에 속한 시술이 있어 삭제할 수 없습니다.")
     
     db.delete(category)
     db.commit()

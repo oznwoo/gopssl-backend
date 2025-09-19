@@ -10,7 +10,7 @@ class Treatment(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     name = Column(String, nullable=False)
     default_price = Column(Integer, nullable=False)
-    category_id = Column(Integer, ForeignKey("treatment_categories.id", ondelete="SET NULL"), nullable=True)
+    category_id = Column(Integer, ForeignKey("treatment_categories.id"), nullable=True)
 
     user = relationship("User", back_populates="treatments")
     category = relationship("TreatmentCategory", back_populates="treatments")
