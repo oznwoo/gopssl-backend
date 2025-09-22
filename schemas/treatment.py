@@ -13,9 +13,10 @@ class TreatmentCreate(TreatmentBase):
 
 class Treatment(TreatmentBase):
     id: int
+    display_order: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 # -----------------------
@@ -29,6 +30,7 @@ class TreatmentCategoryCreate(TreatmentCategoryBase):
 
 class TreatmentCategory(TreatmentCategoryBase):
     id: int
+    display_order: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True

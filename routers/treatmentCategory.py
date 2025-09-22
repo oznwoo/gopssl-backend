@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Dict
 
 from database.session import get_db
 from models.treatment import TreatmentCategory as TreatmentCategoryModel
@@ -21,7 +21,7 @@ def get_all_categories(
 ):
     return db.query(TreatmentCategoryModel).filter(
         TreatmentCategoryModel.user_id == current_user.id
-    ).all()
+    ).order_by(TreatmentCategoryModel.display_order).all()
 
 # 단일 카테고리 조회
 @router.get("/{category_id}", response_model=TreatmentCategory)
@@ -45,7 +45,17 @@ def create_category(
     db: Session = Depends(get_db),
     current_user: UserModel = Depends(get_current_user)
 ):
-    db_category = TreatmentCategoryModel(**category.dict(), user_id=current_user.id)
+    # display_order 계산: 현재 사용자의 카테고리 개수 + 1
+    new_order = db.query(TreatmentCategoryModel).filter(
+        TreatmentCategoryModel.user_id == current_user.id
+    ).count() + 1
+
+    db_category = TreatmentCategoryModel(
+        **category.dict(), 
+        user_id=current_user.id,
+        display_order=new_order
+    )
+
     db.add(db_category)
     db.commit()
     db.refresh(db_category)
@@ -90,5 +100,33 @@ def delete_category(
     if category.treatments:
         raise HTTPException(status_code=400, detail="해당 카테고리에 속한 시술이 있어 삭제할 수 없습니다.")
     
+    deleted_order = category.display_order
+
     db.delete(category)
     db.commit()
+
+    # 삭제된 카테고리보다 순서가 뒤에 있는 카테고리들의 display_order를 1씩 감소
+    db.query(TreatmentCategoryModel).filter(
+        TreatmentCategoryModel.user_id == current_user.id,
+        TreatmentCategoryModel.display_order > deleted_order
+    ).update({"display_order": TreatmentCategoryModel.display_order - 1}, synchronize_session=False)
+    db.commit()
+
+@router.post("/reorder", status_code=status.HTTP_200_OK)
+def reorder_categories(
+    order_data: Dict[int, int], # {category_id: new_order}
+    db: Session = Depends(get_db),
+    current_user: UserModel = Depends(get_current_user)
+):
+    """카테고리 순서를 업데이트합니다."""
+    with db.begin():
+        for category_id, new_order in order_data.items():
+            category = db.query(TreatmentCategoryModel).filter(
+                TreatmentCategoryModel.id == category_id,
+                TreatmentCategoryModel.user_id == current_user.id
+            ).first()
+            if category:
+                category.display_order = new_order
+            else:
+                raise HTTPException(status_code=404, detail=f"Category with id {category_id} not found or not owned by user.")
+    return {"message": "Categories reordered successfully"}
