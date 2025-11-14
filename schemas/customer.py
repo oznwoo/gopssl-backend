@@ -21,5 +21,5 @@ class CustomerRead(BaseModel):
   created_at: datetime
 
   class Config:
-      from_attributes = True  # ✅ Pydantic 2.x 대응
+      from_attributes = True 
 

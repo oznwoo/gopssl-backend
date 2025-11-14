@@ -4,7 +4,7 @@ from passlib.context import CryptContext
 from jose import JWTError, jwt
 from jose.exceptions import ExpiredSignatureError
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Dict
 
 # 비밀번호 해싱용
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -23,7 +23,7 @@ def verify_password(plain: str, hashed: str) -> bool:
   return pwd_context.verify(plain, hashed)
 
 # JWT 생성
-def create_access_token(data: dict, expires_delta: timedelta = None):
+def create_access_token(data: Dict, expires_delta: timedelta = None):
     to_encode = data.copy()
     expire_dt = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     # exp를 Unix 타임스탬프(정수)로 저장하여 역직렬화 차이를 방지
@@ -31,7 +31,7 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 # JWT 검증
-def decode_access_token(token: str) -> Optional[dict]:
+def decode_access_token(token: str) -> Optional[Dict]:
     try:
         
         # 만료 검증은 jose가 수행

@@ -29,7 +29,7 @@ def create_customer(customer: CustomerCreate, db: Session = Depends(get_db), cur
     db.refresh(new_customer)
     return new_customer
 
-@router.get("/", response_model=list[CustomerRead])
+@router.get("/", response_model=List[CustomerRead])
 def read_customers(
     db: Session = Depends(get_db), 
     current_user: User = Depends(get_current_user)

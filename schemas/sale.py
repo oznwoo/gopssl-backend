@@ -17,7 +17,7 @@ class SaleTreatmentRead(SaleTreatmentBase):
     treatment_name: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # -------- Sale --------
 
@@ -48,6 +48,5 @@ class SaleRead(BaseModel):
     extra_prices: Optional[Dict[str, int]] = {}
     num_of_visits: Optional[int]
 
-    model_config = {
-        "from_attributes": True
-    }
+    class Config:
+        from_attributes = True

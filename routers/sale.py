@@ -10,7 +10,7 @@ from models.user import User
 from schemas.sale import SaleCreate, SaleRead, SaleTreatmentRead, SaleUpdate
 from dependencies import get_current_user
 from datetime import datetime, time
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 router = APIRouter(prefix="/sales", tags=["sales"])
 
@@ -108,7 +108,7 @@ def create_sale(sale: SaleCreate, db: Session = Depends(get_db), current_user: U
 
     return sale_read
 
-@router.get("/", response_model=list[SaleRead])
+@router.get("/", response_model=List[SaleRead])
 def read_sales(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return db.query(Sale).filter(Sale.user_id == current_user.id).all()
 
@@ -374,7 +374,7 @@ def update_sale(sale: SaleUpdate, db: Session = Depends(get_db), current_user: U
 
 
 # Delete
-@router.delete("/{sale_id}", response_model=dict)
+@router.delete("/{sale_id}", response_model=Dict)
 def delete_sale(sale_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     sale = db.query(Sale).filter(Sale.id == sale_id).first()
     if not sale:

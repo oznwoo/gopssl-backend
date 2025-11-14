@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Query, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import extract, func, and_
-from typing import Dict, List
+from typing import Dict
 from models.sale import Sale
 from models.user import User
 from database.session import get_db
