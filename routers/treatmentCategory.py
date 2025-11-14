@@ -112,21 +112,26 @@ def delete_category(
     ).update({"display_order": TreatmentCategoryModel.display_order - 1}, synchronize_session=False)
     db.commit()
 
+# /home/ubuntu/Gopssl-Backend/routers/treatmentCategory.py 수정 제안
+
 @router.post("/reorder", status_code=status.HTTP_200_OK)
 def reorder_categories(
     order_data: Dict[int, int], # {category_id: new_order}
     db: Session = Depends(get_db),
     current_user: UserModel = Depends(get_current_user)
 ):
-    """카테고리 순서를 업데이트합니다."""
-    with db.begin():
-        for category_id, new_order in order_data.items():
-            category = db.query(TreatmentCategoryModel).filter(
-                TreatmentCategoryModel.id == category_id,
-                TreatmentCategoryModel.user_id == current_user.id
-            ).first()
-            if category:
-                category.display_order = new_order
-            else:
-                raise HTTPException(status_code=404, detail=f"Category with id {category_id} not found or not owned by user.")
+    """카테고리 순서를 업데이트합니다."""    
+    for category_id, new_order in order_data.items():
+        category = db.query(TreatmentCategoryModel).filter(
+            TreatmentCategoryModel.id == category_id,
+            TreatmentCategoryModel.user_id == current_user.id
+        ).first()
+        if category:
+            category.display_order = new_order
+        else:
+            # 여기서 에러가 발생하면 get_db 의존성에서 자동으로 rollback 처리합니다.
+            raise HTTPException(status_code=404, detail=f"Category with id {category_id} not found or not owned by user.")
+            
+    db.commit() # 모든 변경이 끝난 후 commit을 직접 호출합니다.
+    
     return {"message": "Categories reordered successfully"}
