@@ -1,0 +1,33 @@
+# .github/workflows/deploy.yml
+
+name: Deploy to OCI
+
+# 언제 이 액션을 실행할 것인가: 'dev' 브랜치에 'push'가 일어났을 때
+on:
+  push:
+    branches:
+      - dev
+
+# 어떤 작업을 수행할 것인가
+jobs:
+  deploy:
+    # GitHub가 제공하는 가상 우분투 서버에서 실행
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. SSH 접속 및 배포 명령 실행
+      - name: SSH into OCI and Deploy
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }} # 2단계에서 등록한 Secret
+          username: ${{ secrets.OCI_SSH_USER }} # 2단계에서 등록한 Secret
+          key: ${{ secrets.OCI_SSH_KEY }} # 2단계에서 등록한 Secret
+          port: 22
+
+          # 2. OCI 서버에서 실행할 명령어들
+          script: |
+            cd Gopssl-Backend
+            git checkout dev
+            git pull origin dev
+            sudo systemctl restart gopssl.service
+            sudo systemctl status gopssl.service
