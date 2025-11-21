@@ -112,8 +112,6 @@ def delete_category(
     ).update({"display_order": TreatmentCategoryModel.display_order - 1}, synchronize_session=False)
     db.commit()
 
-# /home/ubuntu/Gopssl-Backend/routers/treatmentCategory.py 수정 제안
-
 @router.post("/reorder", status_code=status.HTTP_200_OK)
 def reorder_categories(
     order_data: Dict[int, int], # {category_id: new_order}

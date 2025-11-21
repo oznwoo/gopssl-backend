@@ -124,9 +124,17 @@ def reorder_treatments(
     current_user: UserModel = Depends(get_current_user)
 ):
     """시술 순서를 업데이트합니다."""
-    with db.begin():
-        for treatment_id, new_order in order_data.items():
-            treatment = db.query(TreatmentModel).filter_by(id=treatment_id, user_id=current_user.id).first()
-            if treatment:
-                treatment.display_order = new_order
+    for treatment_id, new_order in order_data.items():
+        treatment = db.query(TreatmentModel).filter(
+            TreatmentModel.id == treatment_id,
+            TreatmentModel.user_id == current_user.id
+        ).first()
+        if treatment:
+            treatment.display_order = new_order
+        else:
+            # 여기서 에러가 발생하면 get_db 의존성에서 자동으로 rollback 처리합니다.
+            raise HTTPException(status_code=404, detail=f"Treatment with id {treatment_id} not found or not owned by user.")
+
+    db.commit()
+
     return {"message": "Treatments reordered successfully"}
