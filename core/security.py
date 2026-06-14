@@ -1,19 +1,11 @@
-import os
-from dotenv import load_dotenv
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from jose.exceptions import ExpiredSignatureError
 from datetime import datetime, timedelta
 from typing import Optional, Dict
+from core.config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 
-# 비밀번호 해싱용
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-# JWT 설정
-load_dotenv()
-SECRET_KEY = os.getenv("SECRET_KEY")
-ALGORITHM = os.getenv("ALGORITHM")
-ACCESS_TOKEN_EXPIRE_MINUTES = 1440  # 24시간 (24 * 60)
 
 # 비밀번호 해싱
 def hash_password(password: str) -> str:
