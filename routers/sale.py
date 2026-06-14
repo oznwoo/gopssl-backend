@@ -84,7 +84,7 @@ def create_sale(sale: SaleCreate, db: Session = Depends(get_db), current_user: U
 
     # 고객 이름 조회
     customer = db.query(Customer).get(sale.customer_id)
-    customer_name = customer.name if customer else "알 수 없음"
+    customer_name = "삭제된" if (not customer or customer.is_deleted) else customer.name
 
     # 응답 객체 구성
     sale_read = SaleRead.model_validate(
@@ -95,12 +95,13 @@ def create_sale(sale: SaleCreate, db: Session = Depends(get_db), current_user: U
                     id=st.id,
                     sale_id=st.sale_id,
                     treatment_id=st.treatment_id,
-                    treatment_name=st.treatment.name if st.treatment else "알 수 없음",
+                    treatment_name=st.treatment.name if st.treatment else "삭제된",
                     price=st.price
                 )
                 for st in db_treatments
             ],
             "customer_name": customer_name,
+            "is_customer_deleted": not customer or customer.is_deleted,
             "num_of_visits": current_visit_number,
         },
         from_attributes=True
@@ -142,7 +143,10 @@ def read_sales_by_date(
 
         
         sale_dict = jsonable_encoder(sale)
-        sale_dict["customer_name"] = sale.customer.name if sale.customer else "알 수 없음"
+        sale_dict["customer_name"] = (
+            "삭제된" if (not sale.customer or sale.customer.is_deleted) else sale.customer.name
+        )
+        sale_dict["is_customer_deleted"] = not sale.customer or sale.customer.is_deleted
         sale_dict["num_of_visits"] = sale.num_of_visits
 
         sale_dict["treatments"] = [
@@ -178,7 +182,10 @@ def read_sales_by_id(sale_id: int, db: Session = Depends(get_db), current_user: 
 
 
     sale_dict = jsonable_encoder(sale)
-    sale_dict["customer_name"] = sale.customer.name if sale.customer else "알 수 없음"
+    sale_dict["customer_name"] = (
+        "삭제된" if (not sale.customer or sale.customer.is_deleted) else sale.customer.name
+    )
+    sale_dict["is_customer_deleted"] = not sale.customer or sale.customer.is_deleted
     sale_dict["num_of_visits"] = sale.num_of_visits
     sale_dict["treatments"] = [
         {
@@ -226,7 +233,10 @@ def read_sales_by_customer(
     for sale in sales:
         sale_dict = jsonable_encoder(sale)
 
-        sale_dict["customer_name"] = sale.customer.name if sale.customer else "알 수 없음"
+        sale_dict["customer_name"] = (
+            "삭제된" if (not sale.customer or sale.customer.is_deleted) else sale.customer.name
+        )
+        sale_dict["is_customer_deleted"] = not sale.customer or sale.customer.is_deleted
         sale_dict["num_of_visits"] = sale.num_of_visits   # ✅ 해당 매출 당시 회차 그대로 사용
         sale_dict["treatments"] = [
             SaleTreatmentRead(
@@ -348,7 +358,7 @@ def update_sale(sale: SaleUpdate, db: Session = Depends(get_db), current_user: U
 
     # 고객 이름 조회
     customer = db.query(Customer).get(existing_sale.customer_id)
-    customer_name = customer.name if customer else "알 수 없음"
+    customer_name = "삭제된" if (not customer or customer.is_deleted) else customer.name
 
     # 응답객체 구성
     sale_read = SaleRead.model_validate(
@@ -359,12 +369,13 @@ def update_sale(sale: SaleUpdate, db: Session = Depends(get_db), current_user: U
                     id=st.id,
                     sale_id=st.sale_id,
                     treatment_id=st.treatment_id,
-                    treatment_name=st.treatment.name if st.treatment else "알 수 없음",
+                    treatment_name=st.treatment.name if st.treatment else "삭제된",
                     price=st.price,
                 )
                 for st in db_treatments
             ],
             "customer_name": customer_name,
+            "is_customer_deleted": not customer or customer.is_deleted,
             "num_of_visits": current_visit_number,
         },
         from_attributes=True,
