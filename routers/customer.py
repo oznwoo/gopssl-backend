@@ -34,6 +34,29 @@ def read_customers(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    latest_sale_subquery = (
+        db.query(
+            Sale.customer_id,
+            func.max(Sale.created_at).label("latest_created_at")
+        )
+        .group_by(Sale.customer_id)
+        .subquery()
+    )
+
+    latest_sale_data = (
+        db.query(Sale.customer_id, Sale.num_of_visits)
+        .join(
+            latest_sale_subquery,
+            and_(
+                Sale.customer_id == latest_sale_subquery.c.customer_id,
+                Sale.created_at == latest_sale_subquery.c.latest_created_at
+            )
+        )
+        .all()
+    )
+
+    visits_map = {row.customer_id: row.num_of_visits for row in latest_sale_data}
+
     customers = db.query(Customer).filter(
         Customer.user_id == current_user.id,
         Customer.is_deleted == False
@@ -41,14 +64,8 @@ def read_customers(
 
     result = []
     for customer in customers:
-        latest_sale = (
-            db.query(Sale)
-            .filter(Sale.customer_id == customer.id)
-            .order_by(Sale.created_at.desc())
-            .first()
-        )
         customer_data = CustomerRead.model_validate(customer)
-        customer_data.num_of_visits = latest_sale.num_of_visits if latest_sale else None
+        customer_data.num_of_visits = visits_map.get(customer.id)
         result.append(customer_data)
 
     return result
