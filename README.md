@@ -1,8 +1,6 @@
-<h1 align="center">
-  <br/>
-  Gopssl Backend
-  <br/>
-</h1>
+<div align="center">
+<img width="235" height="79" alt="Gopssl" src="https://github.com/user-attachments/assets/748a9cf9-51c8-48e0-a26e-0c0807f0752e" />
+</div>
 
 <p align="center">
   <a href="https://github.com/oh0227/Gopssl-frontend">Gopssl-frontend</a>와 세트로 동작하는 매출 · 고객 관리 앱의 FastAPI 백엔드
@@ -206,19 +204,6 @@ uvicorn main:app --reload
 ```
 
 앱 기동 시 `Base.metadata.create_all(bind=engine)`이 실행되어 정의된 테이블이 없으면 자동 생성된다. 별도의 마이그레이션 도구는 아직 사용하지 않는다.
-
----
-
-## 현재 상태 및 로드맵
-
-혼자 개발 · 운영하고 있는 프로젝트라, 알려진 한계를 그대로 남겨둔다.
-
-- **자동화된 테스트가 없다.** 현재 pytest 기반 테스트가 전혀 없어 회귀를 수동으로 확인하고 있다. `auth`, `sale` 라우터부터 통합 테스트를 추가할 계획이다.
-- **DB 스키마 마이그레이션 도구가 없다.** `Base.metadata.create_all()`로 없는 테이블만 생성하는 방식이라, 기존 테이블의 컬럼 변경은 수동으로 처리해야 한다. Alembic 도입을 검토 중이다.
-- **목록 조회 API에 페이지네이션이 없다.** `GET /customers/`, `GET /sales/` 모두 조건에 맞는 전체 행을 한 번에 반환한다. 데이터가 늘어나면 응답 크기와 조회 시간에 영향을 줄 수 있다.
-- **엔드포인트에 별도의 rate limiting이 없다.** 로그인 등 민감한 엔드포인트도 요청 횟수 제한이 걸려 있지 않다.
-- **`/auth/refresh`의 토큰 만료 시간이 로그인/회원가입과 다르다.** 로그인·회원가입은 24시간짜리 토큰을 발급하는데 refresh는 30분짜리를 발급해, 갱신할수록 세션이 오히려 짧아지는 불일치가 있다. 정리가 필요하다.
-- `core/security.py`의 JWT 예외 처리에 `print()`로 남긴 디버깅 로그가 있다. 운영 로깅 체계로 교체할 예정이다.
 
 ---
 
