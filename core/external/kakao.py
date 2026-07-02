@@ -1,11 +1,10 @@
-# core/external/kakao.py
 import httpx
-import os
+from core.config import KAKAO_REST_API_KEY as KAKAO_API_KEY
 
-KAKAO_API_KEY = os.getenv("KAKAO_REST_API_KEY")
+_BASE = "https://dapi.kakao.com/v2/local"
 
 async def search_keyword(query: str):
-    url = "https://dapi.kakao.com/v2/local/search/keyword.json"
+    url = f"{_BASE}/search/keyword.json"
     headers = {"Authorization": f"KakaoAK {KAKAO_API_KEY}"}
     params = {"query": query}
 
@@ -15,7 +14,7 @@ async def search_keyword(query: str):
         return response.json()
     
 async def refine_address(address_name: str):
-    url = "https://dapi.kakao.com/v2/local/search/address.json"
+    url = f"{_BASE}/search/address.json"
     headers = {"Authorization": f"KakaoAK {KAKAO_API_KEY}"}
     params = {"query": address_name}
 

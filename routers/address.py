@@ -1,10 +1,16 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends
 from core.external.kakao import search_keyword, refine_address
+from models.user import User
+from dependencies import get_current_user
 
 router = APIRouter(prefix="/address", tags=["address"])
 
 @router.get("/search")
-async def combined_address_search(query: str):
+async def combined_address_search(
+    query: str, 
+    current_user: User = Depends(get_current_user)
+):
+    # 로그인한 사용자만 주소 검색 가능
     # 1. keyword API로 광범위한 검색 (하위 주소까지 포함됨)
     keyword_result = await search_keyword(query)
     keyword_docs = keyword_result.get("documents", [])

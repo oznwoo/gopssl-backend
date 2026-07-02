@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime
 from sqlalchemy.sql import func
 from database.session import Base
+from sqlalchemy.orm import relationship
 
 class User(Base):
   __tablename__ = "users"
@@ -14,3 +15,5 @@ class User(Base):
   address_detail = (Column(Text))
   zip_code = Column(Text)
   created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+  treatments = relationship("Treatment", back_populates="user", cascade="all, delete-orphan")

@@ -6,15 +6,21 @@ from database.session import get_db
 from models.sale import Sale, SaleTreatment
 from models.treatment import Treatment  # treatment 관계용
 from models.customer import Customer
+from models.user import User
 from schemas.sale import SaleCreate, SaleRead, SaleTreatmentRead, SaleUpdate
+from dependencies import get_current_user
 from datetime import datetime, time
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 router = APIRouter(prefix="/sales", tags=["sales"])
 
 
 @router.post("/", response_model=SaleRead)
-def create_sale(sale: SaleCreate, db: Session = Depends(get_db)):
+def create_sale(sale: SaleCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # 현재 로그인한 사용자만 매출 생성 가능하도록 검증
+    if sale.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="자신의 매출만 생성할 수 있습니다.")
+
     # 날짜 파싱
     input_date = sale.sale_date
     if isinstance(input_date, str):
@@ -35,23 +41,6 @@ def create_sale(sale: SaleCreate, db: Session = Depends(get_db)):
         .scalar()
     )
     current_visit_number = visit_count + 1
-
-    # 최초/최신 방문일 계산
-    first_visit = (
-        db.query(
-            func.min(Sale.sale_date))
-        .filter(Sale.customer_id == sale.customer_id)
-        .scalar()
-    )
-    # 이전 방문일 구하기 (현재 방문일 제외한 가장 최근 방문일)
-    previous_visit = (
-        db.query(func.max(Sale.sale_date))
-        .filter(
-            Sale.customer_id == sale.customer_id,
-            Sale.sale_date < sale_date_with_time  # 핵심: 현재 방문일보다 이전만
-        )
-        .scalar()
-    )
 
     # 매출 생성
     db_sale = Sale(
@@ -95,7 +84,7 @@ def create_sale(sale: SaleCreate, db: Session = Depends(get_db)):
 
     # 고객 이름 조회
     customer = db.query(Customer).get(sale.customer_id)
-    customer_name = customer.name if customer else "알 수 없음"
+    customer_name = "삭제된" if (not customer or customer.is_deleted) else customer.name
 
     # 응답 객체 구성
     sale_read = SaleRead.model_validate(
@@ -106,29 +95,29 @@ def create_sale(sale: SaleCreate, db: Session = Depends(get_db)):
                     id=st.id,
                     sale_id=st.sale_id,
                     treatment_id=st.treatment_id,
-                    treatment_name=st.treatment.name if st.treatment else "알 수 없음",
+                    treatment_name=st.treatment.name if st.treatment else "삭제된",
                     price=st.price
                 )
                 for st in db_treatments
             ],
             "customer_name": customer_name,
+            "is_customer_deleted": not customer or customer.is_deleted,
             "num_of_visits": current_visit_number,
-            "first_visit": first_visit,
-            "previous_visit": previous_visit,
         },
         from_attributes=True
     )
 
     return sale_read
 
-@router.get("/", response_model=list[SaleRead])
-def read_sales(db: Session = Depends(get_db)):
-    return db.query(Sale).all()
+@router.get("/", response_model=List[SaleRead])
+def read_sales(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return db.query(Sale).filter(Sale.user_id == current_user.id).all()
 
 @router.get("/by_date", response_model=List[SaleRead])
 def read_sales_by_date(
     date: Optional[str] = Query(None, description="조회할 날짜 (YYYY-MM-DD)"),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     if not date:
         raise HTTPException(status_code=400, detail="date query parameter is required")
@@ -141,6 +130,7 @@ def read_sales_by_date(
     sales = (
         db.query(Sale)
         .filter(Sale.sale_date == target_date)
+        .filter(Sale.user_id == current_user.id)
         .options(
             joinedload(Sale.customer),
             joinedload(Sale.treatments).joinedload(SaleTreatment.treatment)
@@ -150,28 +140,14 @@ def read_sales_by_date(
 
     sale_read_list = []
     for sale in sales:
-        # 방문일 범위 계산
-        first_visit = (
-            db.query(func.min(Sale.sale_date))
-            .filter(Sale.customer_id == sale.customer_id)
-            .scalar()
-        )
 
-        # 이번 sale 제외, 가장 최근 방문일
-        previous_visit = (
-            db.query(func.max(Sale.sale_date))
-            .filter(
-                Sale.customer_id == sale.customer_id,
-                Sale.sale_date < sale.sale_date  # 현재 sale 날짜보다 이전
-            )
-            .scalar()
-        )
         
         sale_dict = jsonable_encoder(sale)
-        sale_dict["customer_name"] = sale.customer.name if sale.customer else "알 수 없음"
+        sale_dict["customer_name"] = (
+            "삭제된" if (not sale.customer or sale.customer.is_deleted) else sale.customer.name
+        )
+        sale_dict["is_customer_deleted"] = not sale.customer or sale.customer.is_deleted
         sale_dict["num_of_visits"] = sale.num_of_visits
-        sale_dict["first_visit"] = first_visit
-        sale_dict["previous_visit"] = previous_visit
 
         sale_dict["treatments"] = [
             SaleTreatmentRead(
@@ -190,10 +166,11 @@ def read_sales_by_date(
     return sale_read_list
 
 @router.get("/{sale_id}", response_model=SaleRead)
-def read_sales_by_id(sale_id: int, db: Session = Depends(get_db)):
+def read_sales_by_id(sale_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     sale = (
         db.query(Sale)
         .filter(Sale.id == sale_id)
+        .filter(Sale.user_id == current_user.id)
         .options(
             joinedload(Sale.customer),
             joinedload(Sale.treatments).joinedload(SaleTreatment.treatment)
@@ -203,27 +180,13 @@ def read_sales_by_id(sale_id: int, db: Session = Depends(get_db)):
     if not sale:
         raise HTTPException(status_code=404, detail="매출 정보를 찾을 수 없습니다.")
 
-    # 방문일 범위 계산
-    first_visit = (
-        db.query(func.min(Sale.sale_date))
-        .filter(Sale.customer_id == sale.customer_id)
-        .scalar()
-    )
-
-    previous_visit = (
-        db.query(func.max(Sale.sale_date))
-        .filter(
-            Sale.customer_id == sale.customer_id,
-            Sale.sale_date < sale.sale_date  # 현재 sale 날짜보다 이전
-        )
-        .scalar()
-    )
 
     sale_dict = jsonable_encoder(sale)
-    sale_dict["customer_name"] = sale.customer.name if sale.customer else "알 수 없음"
+    sale_dict["customer_name"] = (
+        "삭제된" if (not sale.customer or sale.customer.is_deleted) else sale.customer.name
+    )
+    sale_dict["is_customer_deleted"] = not sale.customer or sale.customer.is_deleted
     sale_dict["num_of_visits"] = sale.num_of_visits
-    sale_dict["first_visit"] = first_visit
-    sale_dict["previous_visit"] = previous_visit
     sale_dict["treatments"] = [
         {
             "id": st.id,
@@ -238,13 +201,69 @@ def read_sales_by_id(sale_id: int, db: Session = Depends(get_db)):
     return SaleRead(**sale_dict)
 
 
+# 고객별 전체 매출 조회
+@router.get("/by_customer/{customer_id}", response_model=List[SaleRead])
+def read_sales_by_customer(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # 고객 존재 여부 체크
+    customer = (
+        db.query(Customer)
+        .filter(Customer.id == customer_id, Customer.user_id == current_user.id)
+        .first()
+    )
+    if not customer:
+        raise HTTPException(status_code=404, detail="고객 정보를 찾을 수 없습니다.")
+
+    # 해당 고객의 모든 매출 조회
+    sales = (
+        db.query(Sale)
+        .filter(Sale.customer_id == customer_id, Sale.user_id == current_user.id)
+        .options(
+            joinedload(Sale.customer),
+            joinedload(Sale.treatments).joinedload(SaleTreatment.treatment),
+        )
+        .order_by(Sale.sale_date.asc())
+        .all()
+    )
+
+    sale_read_list = []
+    for sale in sales:
+        sale_dict = jsonable_encoder(sale)
+
+        sale_dict["customer_name"] = (
+            "삭제된" if (not sale.customer or sale.customer.is_deleted) else sale.customer.name
+        )
+        sale_dict["is_customer_deleted"] = not sale.customer or sale.customer.is_deleted
+        sale_dict["num_of_visits"] = sale.num_of_visits   # ✅ 해당 매출 당시 회차 그대로 사용
+        sale_dict["treatments"] = [
+            SaleTreatmentRead(
+                id=st.id,
+                sale_id=st.sale_id,
+                treatment_id=st.treatment_id,
+                treatment_name=st.treatment.name if st.treatment else None,
+                price=st.price,
+            )
+            for st in sale.treatments
+        ]
+        sale_read_list.append(SaleRead(**sale_dict))
+
+    return sale_read_list
+
+
 # Update
 @router.put("/", response_model=SaleRead)
-def update_sale(sale: SaleUpdate, db: Session = Depends(get_db)):
+def update_sale(sale: SaleUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     # 기존 매출 조회 (id 기준)
     existing_sale = db.query(Sale).filter(Sale.id == sale.id).first()
     if not existing_sale:
         raise HTTPException(status_code=404, detail="매출이 존재하지 않습니다.")
+
+    # 현재 로그인한 사용자만 매출 수정 가능하도록 검증
+    if existing_sale.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="자신의 매출만 수정할 수 있습니다.")
 
     # 날짜 파싱
     input_date = sale.sale_date
@@ -263,6 +282,10 @@ def update_sale(sale: SaleUpdate, db: Session = Depends(get_db)):
 
     # 고객 아이디가 바뀌었는지 확인
     customer_id_changed = existing_sale.customer_id != sale.customer_id
+
+    # 사용자 ID가 바뀌었는지 확인 (보안상 허용하지 않음)
+    if sale.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="자신의 매출만 수정할 수 있습니다.")
 
     # 기존 고객 방문수 -1 (기존 고객이 있다면)
     if customer_id_changed:
@@ -292,21 +315,6 @@ def update_sale(sale: SaleUpdate, db: Session = Depends(get_db)):
         # 고객이 바뀌지 않으면 기존 방문수 유지
         current_visit_number = existing_sale.num_of_visits
 
-    # 최초 방문일 계산
-    first_visit = (
-        db.query(func.min(Sale.sale_date))
-        .filter(Sale.customer_id == sale.customer_id)
-        .scalar()
-    )
-    # 이전 방문일 계산 (이번 방문일 제외)
-    previous_visit = (
-        db.query(func.max(Sale.sale_date))
-        .filter(
-            Sale.customer_id == sale.customer_id,
-            Sale.sale_date < sale_date_with_time
-        )
-        .scalar()
-    )
 
     # 기존 매출 데이터 업데이트
     existing_sale.user_id = sale.user_id
@@ -350,7 +358,7 @@ def update_sale(sale: SaleUpdate, db: Session = Depends(get_db)):
 
     # 고객 이름 조회
     customer = db.query(Customer).get(existing_sale.customer_id)
-    customer_name = customer.name if customer else "알 수 없음"
+    customer_name = "삭제된" if (not customer or customer.is_deleted) else customer.name
 
     # 응답객체 구성
     sale_read = SaleRead.model_validate(
@@ -361,15 +369,14 @@ def update_sale(sale: SaleUpdate, db: Session = Depends(get_db)):
                     id=st.id,
                     sale_id=st.sale_id,
                     treatment_id=st.treatment_id,
-                    treatment_name=st.treatment.name if st.treatment else "알 수 없음",
+                    treatment_name=st.treatment.name if st.treatment else "삭제된",
                     price=st.price,
                 )
                 for st in db_treatments
             ],
             "customer_name": customer_name,
+            "is_customer_deleted": not customer or customer.is_deleted,
             "num_of_visits": current_visit_number,
-            "first_visit": first_visit,
-            "previous_visit": previous_visit,
         },
         from_attributes=True,
     )
@@ -378,11 +385,15 @@ def update_sale(sale: SaleUpdate, db: Session = Depends(get_db)):
 
 
 # Delete
-@router.delete("/{sale_id}", response_model=dict)
-def delete_sale(sale_id: int, db: Session = Depends(get_db)):
+@router.delete("/{sale_id}", response_model=Dict)
+def delete_sale(sale_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     sale = db.query(Sale).filter(Sale.id == sale_id).first()
     if not sale:
         raise HTTPException(status_code=404, detail="매출 정보를 찾을 수 없습니다.")
+
+    # 현재 로그인한 사용자만 매출 삭제 가능하도록 검증
+    if sale.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="자신의 매출만 삭제할 수 있습니다.")
 
     # 관련 SaleTreatment 레코드들도 삭제(외래키 설정에 따라 자동 삭제될 수도 있음)
     db.query(SaleTreatment).filter(SaleTreatment.sale_id == sale_id).delete()

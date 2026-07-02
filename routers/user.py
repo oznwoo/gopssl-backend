@@ -9,45 +9,44 @@ from datetime import timedelta
 
 router = APIRouter(prefix="/users", tags=["users"])
 
-# Read(전체)
-@router.get("/", response_model=UserRead)
-def get_user(db: Session = Depends(get_db)):
-  return db.query(User).all()
+# Read(전체) - 보안상 제거 (모든 사용자 정보를 볼 수 없음)
+# @router.get("/", response_model=UserRead)
+# def get_user(db: Session = Depends(get_db)):
+#   return db.query(User).all()
 
 # Read(본인)
 @router.get("/me", response_model=UserRead)
 def get_me(current_user: User = Depends(get_current_user)):
     return current_user
 
-# Read(개별)
-@router.get("/{user_id}", response_model=UserRead)
-def read_user(user_id: int, db: Session = Depends(get_db)):
-  user = db.query(User.id == user_id).first()
-  if not user:
-    raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
-  return user
+# Read(개별) - 보안상 제거 (다른 사용자 정보를 볼 수 없음)
+# @router.get("/{user_id}", response_model=UserRead)
+# def read_user(user_id: int, db: Session = Depends(get_db)):
+#   user = db.query(User.id == user_id).first()
+#   if not user:
+#     raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+#   return user
 
-# Update
-@router.put("/{user_id}", response_model=UserRead)
-def update_user(user_id: int, updated_data: UserUpdate, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
-
-    for key, value in updated_data.dict(exclude_unset=True).items():
-        setattr(user, key, value)
-
-    db.commit()
-    db.refresh(user)
-    return user
-
-# Delete
-@router.delete("/{user_id}")
-def delete_user(user_id: int, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+# Update - 본인만 수정 가능
+@router.put("/me", response_model=UserRead)
+def update_me(updated_data: UserUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # 비밀번호가 포함된 경우 해싱
+    if updated_data.password:
+        current_user.password = hash_password(updated_data.password)
     
-    db.delete(user)
+    # 다른 필드들 업데이트 (None이 아닌 값만)
+    update_data = updated_data.dict(exclude_unset=True, exclude={'password'})
+    for key, value in update_data.items():
+        if value is not None:
+            setattr(current_user, key, value)
+
     db.commit()
-    return {"message": "사용자가 삭제되었습니다."}
+    db.refresh(current_user)
+    return current_user
+
+# Delete - 본인만 삭제 가능
+@router.delete("/me")
+def delete_me(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    db.delete(current_user)
+    db.commit()
+    return {"message": "사용자 계정이 삭제되었습니다."}
