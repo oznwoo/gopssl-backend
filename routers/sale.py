@@ -15,11 +15,45 @@ from typing import Optional, List, Dict
 router = APIRouter(prefix="/sales", tags=["sales"])
 
 
+def _get_owned_customer_or_404(db: Session, customer_id: int, user_id: int) -> Customer:
+    """현재 사용자 소유 고객만 조회. 남의 고객이면 존재 여부를 흘리지 않도록 404."""
+    customer = (
+        db.query(Customer)
+        .filter(Customer.id == customer_id, Customer.user_id == user_id)
+        .first()
+    )
+    if not customer:
+        raise HTTPException(status_code=404, detail="고객 정보를 찾을 수 없습니다.")
+    return customer
+
+
+def _check_owned_treatments_or_404(db: Session, treatment_ids: List[int], user_id: int) -> None:
+    """요청된 모든 시술이 현재 사용자 소유인지 확인. 하나라도 아니면 404."""
+    if not treatment_ids:
+        return
+    owned_ids = {
+        row.id
+        for row in db.query(Treatment.id)
+        .filter(Treatment.id.in_(set(treatment_ids)), Treatment.user_id == user_id)
+        .all()
+    }
+    for treatment_id in treatment_ids:
+        if treatment_id not in owned_ids:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Treatment ID {treatment_id} not found"
+            )
+
+
 @router.post("/", response_model=SaleRead)
 def create_sale(sale: SaleCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     # 현재 로그인한 사용자만 매출 생성 가능하도록 검증
     if sale.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="자신의 매출만 생성할 수 있습니다.")
+
+    # 고객·시술 소유권 검증 (DB 변경 전에 모두 확인)
+    customer = _get_owned_customer_or_404(db, sale.customer_id, current_user.id)
+    _check_owned_treatments_or_404(db, [t.treatment_id for t in sale.treatments], current_user.id)
 
     # 날짜 파싱
     input_date = sale.sale_date
@@ -37,7 +71,7 @@ def create_sale(sale: SaleCreate, db: Session = Depends(get_db), current_user: U
     # 👉 방문 회차 계산 (기존 방문 수 + 1)
     visit_count = (
         db.query(func.count(Sale.id))
-        .filter(Sale.customer_id == sale.customer_id)
+        .filter(Sale.customer_id == sale.customer_id, Sale.user_id == current_user.id)
         .scalar()
     )
     current_visit_number = visit_count + 1
@@ -59,13 +93,6 @@ def create_sale(sale: SaleCreate, db: Session = Depends(get_db), current_user: U
 
     # 시술 추가
     for treatment_data in sale.treatments:
-        treatment = db.query(Treatment).get(treatment_data.treatment_id)
-        if not treatment:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Treatment ID {treatment_data.treatment_id} not found"
-            )
-
         db_treatment = SaleTreatment(
             sale_id=db_sale.id,
             treatment_id=treatment_data.treatment_id,
@@ -82,8 +109,7 @@ def create_sale(sale: SaleCreate, db: Session = Depends(get_db), current_user: U
         .all()
     )
 
-    # 고객 이름 조회
-    customer = db.query(Customer).get(sale.customer_id)
+    # 고객 이름 (위에서 소유권 검증한 고객)
     customer_name = "삭제된" if (not customer or customer.is_deleted) else customer.name
 
     # 응답 객체 구성
@@ -287,6 +313,10 @@ def update_sale(sale: SaleUpdate, db: Session = Depends(get_db), current_user: U
     if sale.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="자신의 매출만 수정할 수 있습니다.")
 
+    # 고객·시술 소유권 검증 (DB 변경 전에 모두 확인)
+    customer = _get_owned_customer_or_404(db, sale.customer_id, current_user.id)
+    _check_owned_treatments_or_404(db, [t.treatment_id for t in sale.treatments], current_user.id)
+
     # 기존 고객 방문수 -1 (기존 고객이 있다면)
     if customer_id_changed:
         # 기존 고객 방문수 업데이트 (기존 방문수 -1)
@@ -307,7 +337,7 @@ def update_sale(sale: SaleUpdate, db: Session = Depends(get_db), current_user: U
         # 새로운 고객 방문수 계산 (기존 방문 수 +1)
         visit_count = (
             db.query(func.count(Sale.id))
-            .filter(Sale.customer_id == sale.customer_id)
+            .filter(Sale.customer_id == sale.customer_id, Sale.user_id == current_user.id)
             .scalar()
         )
         current_visit_number = visit_count + 1
@@ -334,12 +364,6 @@ def update_sale(sale: SaleUpdate, db: Session = Depends(get_db), current_user: U
 
     # 새 시술 추가
     for treatment_data in sale.treatments:
-        treatment = db.query(Treatment).get(treatment_data.treatment_id)
-        if not treatment:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Treatment ID {treatment_data.treatment_id} not found"
-            )
         db_treatment = SaleTreatment(
             sale_id=existing_sale.id,
             treatment_id=treatment_data.treatment_id,
@@ -356,8 +380,7 @@ def update_sale(sale: SaleUpdate, db: Session = Depends(get_db), current_user: U
         .all()
     )
 
-    # 고객 이름 조회
-    customer = db.query(Customer).get(existing_sale.customer_id)
+    # 고객 이름 (위에서 소유권 검증한 고객)
     customer_name = "삭제된" if (not customer or customer.is_deleted) else customer.name
 
     # 응답객체 구성
