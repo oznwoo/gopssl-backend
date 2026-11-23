@@ -112,11 +112,27 @@ def add_treatment(client: TestClient, token: str, category_id: int, name: str, p
     return r.json()["id"]
 
 
+def signup_body(name: str, email: str, password: str, **overrides) -> Dict:
+    """회원가입 요청 바디 (16b: 비밀번호 규칙 + 약관·처리방침·만 14세 동의 필수)."""
+    body = {
+        "name": name,
+        "email": email,
+        "password": password,
+        "terms_version": "2026-11-01",
+        "privacy_version": "2026-11-01",
+        "agree_terms": True,
+        "agree_privacy": True,
+        "agree_over_14": True,
+    }
+    body.update(overrides)
+    return body
+
+
 def make_shop(client: TestClient, key: str) -> Shop:
     email = "{}@example.com".format(key)
-    password = "pw-{}".format(key)
+    password = "pw-{}-2026".format(key)
 
-    r = client.post("/auth/signup", json={"name": key, "email": email, "password": password})
+    r = client.post("/auth/signup", json=signup_body(key, email, password))
     assert r.status_code == 200, r.text
 
     r = client.post("/auth/signin", data={"username": email, "password": password})
