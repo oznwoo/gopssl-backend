@@ -1,3 +1,7 @@
+@../AGENTS.md
+
+> 이 레포에서 Claude의 기본 역할은 **구현**이다 (AGENTS.md "역할별 규칙" 참고).
+
 # Gopssl Backend — 프로젝트 컨텍스트
 
 > AI 어시스턴트를 위한 백엔드 전체 컨텍스트 파일.
