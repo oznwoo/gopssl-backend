@@ -4,10 +4,10 @@ from sqlalchemy.orm import Session
 from models.user import User
 from schemas.user import UserCreate
 from database.session import get_db
-from core.security import verify_password, create_access_token, hash_password, decode_access_token
+from core.security import verify_and_update_password, create_access_token, hash_password, decode_access_token
 from schemas.user import Token
 from dependencies import get_current_user
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -20,10 +20,14 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
   if existing_user:
     raise HTTPException(status_code=400, detail="이미 가입된 이메일입니다.")
   
+  # 동의 여부(agree_*)는 스키마에서 모두 true인지 검증됨 → 동의 시각·버전 기록
   new_user = User(
      email=user.email,
      name=user.name,
-     password=hash_password(user.password)
+     password=hash_password(user.password),
+     terms_version=user.terms_version,
+     privacy_version=user.privacy_version,
+     agreed_at=datetime.now(timezone.utc),
   )
   db.add(new_user)
   db.commit()
@@ -40,9 +44,18 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
 @router.post("/signin", response_model=Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == form_data.username).first()
-    if not user or not verify_password(form_data.password, user.password):
+    if not user:
         raise HTTPException(status_code=401, detail="잘못된 이메일 또는 비밀번호")
-    
+
+    valid, updated_hash = verify_and_update_password(form_data.password, user.password)
+    if not valid:
+        raise HTTPException(status_code=401, detail="잘못된 이메일 또는 비밀번호")
+
+    # 기존 bcrypt 해시(또는 옛 파라미터의 Argon2 해시)면 로그인 성공 시 Argon2id로 다시 저장
+    if updated_hash:
+        user.password = updated_hash
+        db.commit()
+
     # 로그인 성공 시 새 토큰 발급 (24시간으로 늘림)
     token = create_access_token(
         data={"sub": str(user.id)},
