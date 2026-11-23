@@ -1,0 +1,141 @@
+# .github/workflows/deploy-beta.yml
+#
+# 베타 서버(Lightsail, dev-api.gopssl.com) 자동 배포
+# - dev 에 push(머지)되면 dev 를 배포
+# - Actions 탭의 "Run workflow" 버튼(workflow_dispatch)으로 원하는 브랜치를 골라 배포
+#
+# 필요한 Secret: BETA_HOST, BETA_USER, BETA_SSH_KEY
+# 서버의 .env(untracked)는 git reset --hard 로 바뀌지 않는다.
+
+name: Deploy to Beta (Lightsail)
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "베타에 배포할 브랜치"
+        required: true
+        default: dev
+        type: string
+
+# 동시 실행 방지: 진행 중인 배포는 취소하지 않고, 다음 실행은 끝날 때까지 대기
+concurrency:
+  group: deploy-beta
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  APP_DIR: /home/ubuntu/gopssl-backend
+  SERVICE_NAME: gopssl-beta
+  HEALTH_URL: https://dev-api.gopssl.com/docs
+  HEALTH_TIMEOUT_SECONDS: "30"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # 1. 배포할 브랜치 결정 + 검증 (서버 접속 전)
+      #    dispatch input 은 셸 코드에 직접 넣지 않고 env 로만 넘긴다 (명령 주입 방지)
+      - name: Resolve branch
+        id: target
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_BRANCH: ${{ inputs.branch }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            BRANCH="$INPUT_BRANCH"
+          else
+            BRANCH="dev"
+          fi
+
+          # 브랜치 이름 형식 검사: 영문/숫자/._-/ 만 허용, git ref 규칙 준수
+          if ! printf '%s' "$BRANCH" | grep -Eq '^[A-Za-z0-9._/-]+$' \
+             || ! git check-ref-format --branch "$BRANCH" >/dev/null 2>&1; then
+            echo "::error::허용되지 않는 브랜치 이름입니다."
+            exit 1
+          fi
+
+          # 원격에 실제로 있는 브랜치인지 확인
+          COMMIT="$(git ls-remote --heads "$REPO_URL" "refs/heads/$BRANCH" | cut -f1)"
+          if [ -z "$COMMIT" ]; then
+            echo "::error::원격에 브랜치가 없습니다: $BRANCH"
+            exit 1
+          fi
+
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+          echo "배포 대상: $BRANCH ($COMMIT)"
+
+      # 2. 베타 서버에서 코드 갱신 → 의존성 설치 → 재시작
+      - name: SSH into Beta and Deploy
+        id: deploy
+        uses: appleboy/ssh-action@master
+        env:
+          BRANCH: ${{ steps.target.outputs.branch }}
+        with:
+          host: ${{ secrets.BETA_HOST }}
+          username: ${{ secrets.BETA_USER }}
+          key: ${{ secrets.BETA_SSH_KEY }}
+          port: 22
+          envs: BRANCH,APP_DIR,SERVICE_NAME
+          capture_stdout: true
+          script: |
+            set -eu
+            cd "$APP_DIR"
+            git fetch origin
+            git checkout "$BRANCH"
+            git reset --hard "origin/$BRANCH"
+            venv/bin/pip install -r requirements.txt
+            sudo -n systemctl restart "$SERVICE_NAME"
+            echo "DEPLOYED_BRANCH=$(git rev-parse --abbrev-ref HEAD)"
+            echo "DEPLOYED_COMMIT=$(git rev-parse HEAD)"
+
+      # 3. 헬스 체크: 최대 HEALTH_TIMEOUT_SECONDS 동안 200 이 될 때까지 재시도
+      #    (/docs 는 앱 프로세스 기동만 확인하고 DB 연결은 확인하지 않는다)
+      - name: Health check
+        run: |
+          set -u
+          deadline=$(( SECONDS + HEALTH_TIMEOUT_SECONDS ))
+          code="000"
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$HEALTH_URL" || true)"
+            if [ "$code" = "200" ]; then
+              echo "헬스 체크 성공 ($HEALTH_URL → 200)"
+              exit 0
+            fi
+            echo "대기 중... (응답 코드: $code)"
+            sleep 3
+          done
+          echo "::error::헬스 체크 실패: ${HEALTH_TIMEOUT_SECONDS}초 안에 200 응답 없음 (마지막 응답 코드: $code)"
+          exit 1
+
+      # 4. 배포 결과 출력
+      - name: Deployment summary
+        if: always() && steps.target.outputs.branch != ''
+        env:
+          BRANCH: ${{ steps.target.outputs.branch }}
+          EXPECTED_COMMIT: ${{ steps.target.outputs.commit }}
+          SSH_STDOUT: ${{ steps.deploy.outputs.stdout }}
+        run: |
+          DEPLOYED_COMMIT="$(printf '%s\n' "$SSH_STDOUT" | sed -n 's/^DEPLOYED_COMMIT=//p' | tail -1)"
+          echo "브랜치: $BRANCH"
+          echo "요청 시점 원격 커밋: $EXPECTED_COMMIT"
+          echo "서버 배포 커밋: ${DEPLOYED_COMMIT:-(확인 불가)}"
+          {
+            echo "### 베타 배포"
+            echo "- 브랜치: \`$BRANCH\`"
+            echo "- 요청 시점 원격 커밋: \`$EXPECTED_COMMIT\`"
+            echo "- 서버 배포 커밋: \`${DEPLOYED_COMMIT:-확인 불가}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$DEPLOYED_COMMIT" ] && [ "$DEPLOYED_COMMIT" != "$EXPECTED_COMMIT" ]; then
+            echo "::warning::요청 이후 브랜치에 새 커밋이 push 되어 서버 커밋이 다릅니다."
+          fi
