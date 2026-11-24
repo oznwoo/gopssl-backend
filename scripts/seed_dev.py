@@ -34,6 +34,15 @@ if _host not in ALLOWED_HOSTS:
 
 random.seed(42)
 
+# 회원가입 필수 동의 (16b). 시드 계정은 실제 사용자 동의가 아니므로 버전을 "dev-seed"로 구분해 둔다.
+SEED_CONSENT = {
+    "terms_version": "dev-seed",
+    "privacy_version": "dev-seed",
+    "agree_terms": True,
+    "agree_privacy": True,
+    "agree_over_14": True,
+}
+
 SHOPS = [
     {"name": "테스트원장A", "email": "shop-a@gopssl.dev", "password": "test1234!", "store_name": "테스트미용실 A"},
     {"name": "테스트원장B", "email": "shop-b@gopssl.dev", "password": "test1234!", "store_name": "테스트미용실 B"},
@@ -55,6 +64,7 @@ def signup_or_login(client: httpx.Client, shop: dict) -> str:
     r = client.post("/auth/signup", json={
         "name": shop["name"], "email": shop["email"], "password": shop["password"],
         "store_name": shop["store_name"],
+        **SEED_CONSENT,
     })
     if r.status_code == 400:  # 이미 가입됨 → 로그인
         r = client.post("/auth/signin", data={"username": shop["email"], "password": shop["password"]})
