@@ -247,6 +247,25 @@
         "title": "DeletedCustomerRead",
         "type": "object"
       },
+      "EmailChange": {
+        "properties": {
+          "current_password": {
+            "title": "Current Password",
+            "type": "string"
+          },
+          "new_email": {
+            "format": "email",
+            "title": "New Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "current_password",
+          "new_email"
+        ],
+        "title": "EmailChange",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -258,6 +277,24 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "PasswordChange": {
+        "properties": {
+          "current_password": {
+            "title": "Current Password",
+            "type": "string"
+          },
+          "new_password": {
+            "title": "New Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "current_password",
+          "new_password"
+        ],
+        "title": "PasswordChange",
         "type": "object"
       },
       "SaleCreate": {
@@ -738,6 +775,18 @@
             ],
             "title": "Address Detail"
           },
+          "agree_over_14": {
+            "title": "Agree Over 14",
+            "type": "boolean"
+          },
+          "agree_privacy": {
+            "title": "Agree Privacy",
+            "type": "boolean"
+          },
+          "agree_terms": {
+            "title": "Agree Terms",
+            "type": "boolean"
+          },
           "email": {
             "format": "email",
             "title": "Email",
@@ -751,6 +800,12 @@
             "title": "Password",
             "type": "string"
           },
+          "privacy_version": {
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Privacy Version",
+            "type": "string"
+          },
           "store_name": {
             "anyOf": [
               {
@@ -761,6 +816,12 @@
               }
             ],
             "title": "Store Name"
+          },
+          "terms_version": {
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Terms Version",
+            "type": "string"
           },
           "zip_code": {
             "anyOf": [
@@ -777,7 +838,12 @@
         "required": [
           "name",
           "email",
-          "password"
+          "password",
+          "terms_version",
+          "privacy_version",
+          "agree_terms",
+          "agree_privacy",
+          "agree_over_14"
         ],
         "title": "UserCreate",
         "type": "object"
@@ -887,18 +953,6 @@
             ],
             "title": "Address Detail"
           },
-          "email": {
-            "anyOf": [
-              {
-                "format": "email",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Email"
-          },
           "name": {
             "anyOf": [
               {
@@ -909,17 +963,6 @@
               }
             ],
             "title": "Name"
-          },
-          "password": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Password"
           },
           "store_name": {
             "anyOf": [
@@ -2605,6 +2648,99 @@
           }
         ],
         "summary": "Update Me",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/users/me/email": {
+      "post": {
+        "operationId": "change_email_users_me_email_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Change Email",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/users/me/password": {
+      "post": {
+        "operationId": "change_password_users_me_password_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Change Password Users Me Password Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Change Password",
         "tags": [
           "users"
         ]

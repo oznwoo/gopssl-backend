@@ -75,7 +75,7 @@ OpenAPI에 드러나지 않는 것(상태 코드, 테넌트 규칙, 부수 효�
 
 | Method | Path | 인증 | 요청 | 성공 | 실패 |
 |--------|------|------|------|------|------|
-| POST | `/auth/signup` | ❌ | JSON `UserCreate` | 200 `Token` | 400 이메일 중복, 422 |
+| POST | `/auth/signup` | ❌ | JSON `UserCreate` | 200 `Token` | 400 이메일 중복, 422 (비밀번호 규칙 위반·동의 누락 포함) |
 | POST | `/auth/signin` | ❌ | **form** `username`(이메일), `password` | 200 `Token` | 401 이메일·비밀번호 불일치, 422 (JSON 본문을 보내도 422) |
 | POST | `/auth/refresh` | ✅ | 없음 | 200 `Token` (30분) | 공통 |
 | POST | `/auth/logout` | ✅ | 없음 | 200 `{"message"}` | 공통 |
@@ -88,8 +88,11 @@ OpenAPI에 드러나지 않는 것(상태 코드, 테넌트 규칙, 부수 효�
 
 ```text
 UserCreate  { name: str, email: EmailStr, password: str,
-              store_name?: str, address?: str, address_detail?: str, zip_code?: str }
-              ※ name·email·password만 저장된다 (KI-6)
+              store_name?: str, address?: str, address_detail?: str, zip_code?: str,
+              terms_version: str(1~50), privacy_version: str(1~50),
+              agree_terms: bool, agree_privacy: bool, agree_over_14: bool }
+              ※ name·email·password와 동의 기록(terms_version·privacy_version·agreed_at)만 저장된다 (KI-6)
+              ※ password: 8~64자, 영문·숫자 각 1개 이상. agree_* 는 셋 다 true여야 한다 (16b)
 Token       { access_token: str, token_type: "bearer" }
 ```
 
@@ -98,15 +101,26 @@ Token       { access_token: str, token_type: "bearer" }
 | Method | Path | 인증 | 요청 | 성공 | 실패 |
 |--------|------|------|------|------|------|
 | GET | `/users/me` | ✅ | 없음 | 200 `UserRead` | 공통 |
-| PUT | `/users/me` | ✅ | JSON `UserUpdate` | 200 `UserRead` | 공통, 422, 500 이메일 중복 (KI-11) |
+| PUT | `/users/me` | ✅ | JSON `UserUpdate` | 200 `UserRead` | 공통, 422 |
+| POST | `/users/me/password` | ✅ | JSON `PasswordChange` | 200 `{"message"}` | 공통, 400 현재 비밀번호 틀림, 422 (규칙 위반·현재와 같은 비밀번호) |
+| POST | `/users/me/email` | ✅ | JSON `EmailChange` | 200 `UserRead` | 공통, 400 현재 비밀번호 틀림·현재 이메일과 같음, 409 이미 사용 중, 422 |
 | DELETE | `/users/me` | ✅ | 없음 | 200 `{"message"}` | 공통 |
 
 - 테넌트: 토큰의 사용자만 대상이다. `/users/{id}` 경로는 없다(404).
-- `PUT`은 `null`이나 생략한 필드를 바꾸지 않는다. 그래서 값을 `null`로 지울 수 없다. `password`는 해싱해서 저장한다.
+- `PUT`은 `null`이나 생략한 필드를 바꾸지 않는다. 그래서 값을 `null`로 지울 수 없다.
+- `PUT`은 `email`·`password`를 **받지 않는다** (19b). 구버전 앱처럼 보내도 무시되고 200이며, 이메일·비밀번호는 바뀌지 않는다.
+- 비밀번호·이메일은 현재 비밀번호를 확인하는 전용 API로만 바꾼다 (19b, pytest로 확인).
+  - 현재 비밀번호 확인이 먼저다. 틀리면 다른 검사(같은 비밀번호, 이메일 중복)보다 먼저 **400** `{"detail": "현재 비밀번호가 올바르지 않습니다."}`.
+    401이 아닌 이유: 앱의 axios 인터셉터가 401을 토큰 만료로 보고 갱신·재시도·로그아웃을 하므로 "비밀번호 틀림"과 구분할 수 없다.
+  - `password`: 새 비밀번호가 현재와 같으면 422이고, `detail`은 스키마 검증과 같은 배열 형식(`loc: ["body", "new_password"]`)이다.
+  - `email`: 가입과 같은 기준(EmailStr, 정확히 일치)으로 중복을 확인한다. 중복이면 409, 현재 이메일과 같으면 400. 동시에 같은 이메일로 바꿔 DB unique 제약에 걸려도 409다.
+  - 기존에 발급된 토큰은 비밀번호·이메일 변경 후에도 만료(24시간)까지 유효하다. 토큰은 사용자 id 기준이라 이메일을 바꿔도 계속 쓸 수 있다.
 - `DELETE`: 시술은 ORM cascade로, 고객·매출은 DB `ON DELETE CASCADE`로 함께 삭제된다. 카테고리는 남는다 (KI-13).
 
 ```text
-UserUpdate  { name?, email?: EmailStr, password?, store_name?, address?, address_detail?, zip_code? }
+UserUpdate      { name?, store_name?, address?, address_detail?, zip_code? }   ※ email·password는 19b에서 제거 (보내면 무시)
+PasswordChange  { current_password: str, new_password: str }   ※ new_password는 가입과 같은 규칙
+EmailChange     { current_password: str, new_email: EmailStr }
 UserRead    { id: int, name: str|null, email: EmailStr, store_name: str|null, address: str|null,
               address_detail: str|null, zip_code: str|null, created_at: datetime }
 ```
@@ -306,7 +320,7 @@ Python 3.8에서 드라이버 미지정 URL, 그리고 운영 서버의 실제 �
 | KI-8 | **토큰 만료 시각이 서버 시간대에 따라 어긋난다.** `datetime.utcnow().timestamp()`가 UTC 값을 로컬 시각으로 해석한다. | **확인** | `core/security.py:20-22`. `TZ=Asia/Seoul`에서 로그인 토큰의 남은 시간은 900분(15시간), `/auth/refresh` 토큰은 **-510분으로 발급 즉시 만료**되어 다음 호출이 401이다. `TZ=UTC`에서는 정상이다. 운영 서버의 시간대는 확인하지 못했다. |
 | KI-9 | **`GET /sales/`는 매출이 하나라도 있으면 500이다.** ORM 객체에 `customer_name`이 없어 응답 검증에 실패한다. | **확인** | `routers/sale.py:113-114`, `schemas/sale.py`. 매출이 없으면 200 `[]`. |
 | KI-10 | **시술을 삭제하면 그 시술이 포함된 매출 조회가 500이다.** `treatment_id`가 `NULL`이 되는데 `treatment_name: str`이 필수이고, `by_date`는 `st.treatment.category`도 읽는다. | **확인** | `GET /sales/{id}`, `/sales/by_date`, `/sales/by_customer/{id}` 모두 재현. `routers/sale.py`, `schemas/sale.py:17`. |
-| KI-11 | 입력 오류가 처리되지 않고 500이 된다. | **확인** | `POST /sales/` 없는 `customer_id`, `POST /treatments/` 없는 `category_id`, `PUT /users/me` 중복 이메일, 컬럼 길이 초과(`phone_number` 30자), 카카오 HTTP 오류, 카카오 응답의 `address: null` (`routers/address.py:34`, mock으로 재현). |
+| KI-11 | 입력 오류가 처리되지 않고 500이 된다. | **확인** | `POST /sales/` 없는 `customer_id`, `POST /treatments/` 없는 `category_id`, `PUT /users/me` 중복 이메일(19b에서 해소: `PUT`은 이메일을 받지 않고, 변경은 `POST /users/me/email`에서 409), 컬럼 길이 초과(`phone_number` 30자), 카카오 HTTP 오류, 카카오 응답의 `address: null` (`routers/address.py:34`, mock으로 재현). |
 | KI-12 | **시술의 `category_id` 소유자를 검증하지 않는다** (테넌트 격리 위반). B의 시술을 A의 카테고리에 넣을 수 있고, 그러면 A는 그 카테고리를 지울 수 없다(400). | `POST` 확인, `PUT`은 코드 | `routers/treatment.py:58,85-86`, `routers/treatmentCategory.py:100`. |
 | KI-13 | `DELETE /users/me` 후 카테고리가 `user_id = NULL`로 DB에 남는다. | **확인** | `models/treatment.py:29`. ORM relationship에 cascade가 없어 FK의 `ON DELETE CASCADE` 전에 `NULL`로 바뀐다. |
 | KI-14 | 다른 사용자 매출에 대한 응답이 일관되지 않다. `GET`은 404, `PUT`·`DELETE`는 403이라 매출 id의 존재 여부를 알 수 있다. | **확인** | `routers/sale.py:262-266,391-396`. |
