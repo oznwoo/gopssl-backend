@@ -190,26 +190,18 @@ def _signup_and_token(client) -> str:
     return r.json()["access_token"]
 
 
-@pytest.mark.parametrize("password", ["short1a", "abcdefgh", "12345678", "a1" + "b" * 63])
-def test_update_me_rejects_password_breaking_rule(client, db_session, password):
+# 19b: PUT /users/me 는 더 이상 비밀번호를 바꾸지 않는다 (POST /users/me/password 로 이동).
+# 비밀번호 규칙·Argon2id 저장 검증은 tests/test_account_change.py 로 옮겼다.
+@pytest.mark.parametrize("password", ["short1a", "newpass456"])
+def test_update_me_ignores_password_field(client, db_session, password):
     token = _signup_and_token(client)
     original = stored_user(db_session).password
 
     r = client.put("/users/me", json={"password": password}, headers={"Authorization": "Bearer {}".format(token)})
 
-    assert r.status_code == 422, r.text
-    assert stored_user(db_session).password == original
-
-
-def test_update_me_with_valid_password_stores_argon2id(client, db_session):
-    token = _signup_and_token(client)
-
-    r = client.put("/users/me", json={"password": "newpass456"}, headers={"Authorization": "Bearer {}".format(token)})
-
     assert r.status_code == 200, r.text
-    assert stored_user(db_session).password.startswith("$argon2id$")
-    assert signin(client, EMAIL, "newpass456").status_code == 200
-    assert signin(client, EMAIL, GOOD_PASSWORD).status_code == 401
+    assert stored_user(db_session).password == original
+    assert signin(client, EMAIL, GOOD_PASSWORD).status_code == 200
 
 
 def test_update_me_without_password_keeps_hash(client, db_session):
