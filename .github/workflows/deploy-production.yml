@@ -9,7 +9,7 @@
 #   - 이름은 예전(Lightsail = 베타) 그대로지만, 2026-11 전환 이후 Lightsail 은 운영이다.
 #   - 이름 변경(LIGHTSAIL_*)은 별도 작업으로 진행한다.
 # 서버의 .env(untracked)는 git checkout -B / reset 으로 바뀌지 않는다.
-# systemd 서비스명(gopssl-beta)·포트(8001)는 서버에 있는 값을 그대로 쓴다.
+# systemd 서비스: gopssl, 포트: 8001
 
 name: Deploy to Production (Lightsail)
 
@@ -30,7 +30,7 @@ permissions:
 env:
   BRANCH: main
   APP_DIR: /home/ubuntu/gopssl-backend
-  SERVICE_NAME: gopssl-beta
+  SERVICE_NAME: gopssl
   APP_PORT: "8001"
   HEALTH_TIMEOUT_SECONDS: "30"
 

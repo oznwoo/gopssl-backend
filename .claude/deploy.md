@@ -4,10 +4,9 @@
 
 | 환경 | 브랜치 | 서버 | DB | 도메인 | systemd (포트) | 앱 디렉터리 | 워크플로 |
 |------|--------|------|----|--------|----------------|-------------|----------|
-| 운영 | `main` | AWS Lightsail (Ubuntu) | Supabase (서울) | api.gopssl.com | `gopssl-beta` (8001) | `/home/ubuntu/gopssl-backend` | `.github/workflows/deploy-production.yml` |
-| 베타 | `dev` | Oracle Cloud (OCI, Ubuntu) | OCI 내부 Postgres | dev-api.gopssl.com | `gopssl.service` (8000) | `~/Gopssl-Backend` | `.github/workflows/deploy-beta.yml` |
+| 운영 | `main` | AWS Lightsail (Ubuntu) | Supabase (서울) | api.gopssl.com | `gopssl` (8001) | `/home/ubuntu/gopssl-backend` (`venv/`) | `.github/workflows/deploy-production.yml` |
+| 베타 | `dev` | Oracle Cloud (OCI, Ubuntu) | OCI 내부 Docker Postgres 17 (127.0.0.1:5432) | dev-api.gopssl.com | `gopssl-beta` (8000) | `~/Gopssl-Backend` (`venv/`, Python 3.12) | `.github/workflows/deploy-beta.yml` |
 
-- Lightsail의 systemd 서비스명 `gopssl-beta`는 예전(Lightsail = 베타) 이름 그대로다. 이름과 달리 **운영**이다.
 - **main 머지 = 운영 배포, dev 머지 = 베타 배포.** 둘 다 머지 즉시 자동으로 실행된다.
 
 ---

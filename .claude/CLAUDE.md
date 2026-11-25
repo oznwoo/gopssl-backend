@@ -16,10 +16,10 @@
 - 배포: GitHub Actions — 브랜치에 머지(push)되면 자동 배포
   | 브랜치 | 환경 | 서버 | DB | 도메인 | systemd | 워크플로 |
   |--------|------|------|----|--------|---------|----------|
-  | `main` | 운영 | AWS Lightsail | Supabase (서울) | api.gopssl.com | `gopssl-beta` (8001) | `deploy-production.yml` |
-  | `dev` | 베타 | Oracle Cloud (OCI) | OCI 내부 Postgres | dev-api.gopssl.com | `gopssl.service` (8000) | `deploy-beta.yml` |
+  | `main` | 운영 | AWS Lightsail | Supabase (서울) | api.gopssl.com | `gopssl` (8001) | `deploy-production.yml` |
+  | `dev` | 베타 | Oracle Cloud (OCI) | OCI 내부 Docker Postgres 17 (127.0.0.1:5432) | dev-api.gopssl.com | `gopssl-beta` (8000) | `deploy-beta.yml` |
 - 수동 배포: GitHub Actions 탭 → 해당 워크플로 → "Run workflow" (운영은 항상 main, 베타는 브랜치 선택 가능)
-- systemd 서비스명(`gopssl-beta`)은 예전 이름 그대로다. Lightsail이 운영이다.
+- 베타(OCI) venv: `~/Gopssl-Backend/venv` (Python 3.12)
 
 ## 디렉터리 구조
 

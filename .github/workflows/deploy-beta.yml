@@ -1,12 +1,12 @@
 # .github/workflows/deploy-beta.yml
 #
-# 베타 서버(OCI, dev-api.gopssl.com, DB = OCI 내부 Postgres) 자동 배포
+# 베타 서버(OCI, dev-api.gopssl.com, DB = OCI 내부 Docker Postgres 17, 127.0.0.1:5432) 자동 배포
 # - dev 에 push(머지)되면 dev 를 배포
 # - Actions 탭 → "Deploy to Beta (OCI)" → "Run workflow" 에서 브랜치를 골라 배포
 #
 # 필요한 Secret: OCI_SSH_HOST, OCI_SSH_USER, OCI_SSH_KEY
 # 서버의 .env(untracked)는 git checkout -B / reset 으로 바뀌지 않는다.
-# systemd 서비스명(gopssl.service)·포트(8000)는 서버에 있는 값을 그대로 쓴다.
+# systemd 서비스: gopssl-beta, 포트: 8000, venv: ~/Gopssl-Backend/venv (Python 3.12)
 
 name: Deploy to Beta (OCI)
 
@@ -32,7 +32,7 @@ permissions:
 
 env:
   APP_DIR: Gopssl-Backend # 서버 사용자 홈 디렉터리 기준
-  SERVICE_NAME: gopssl.service
+  SERVICE_NAME: gopssl-beta
   APP_PORT: "8000"
   HEALTH_TIMEOUT_SECONDS: "30"
 
