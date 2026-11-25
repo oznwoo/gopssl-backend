@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List, Dict
 
 from database.session import get_db
-from models.treatment import Treatment as TreatmentModel
+from models.treatment import Treatment as TreatmentModel, TreatmentCategory as TreatmentCategoryModel
 from models.user import User as UserModel
 from schemas.treatment import Treatment, TreatmentCreate
 from dependencies import get_current_user
@@ -12,6 +12,19 @@ router = APIRouter(
     prefix="/treatments",
     tags=["treatments"],
 )
+
+
+def _get_owned_category_or_404(db: Session, category_id: int, user_id: int) -> TreatmentCategoryModel:
+    """현재 사용자 소유 카테고리만 조회. 남의 카테고리·없는 카테고리 모두 존재 여부를 흘리지 않도록 404."""
+    category = (
+        db.query(TreatmentCategoryModel)
+        .filter(TreatmentCategoryModel.id == category_id, TreatmentCategoryModel.user_id == user_id)
+        .first()
+    )
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+    return category
+
 
 # 모든 시술 조회
 @router.get("/", response_model=List[Treatment])
@@ -47,6 +60,9 @@ def create_treatment(
     db: Session = Depends(get_db),
     current_user: UserModel = Depends(get_current_user)
 ):
+    # 카테고리 소유권 검증 (DB 변경·조회 전에)
+    _get_owned_category_or_404(db, treatment.category_id, current_user.id)
+
     # display_order 계산: 해당 카테고리의 시술 개수 + 1
     new_order = db.query(TreatmentModel).filter(
         TreatmentModel.user_id == current_user.id,
@@ -81,6 +97,10 @@ def update_treatment(
 
     if not t:
         raise HTTPException(status_code=404, detail="Treatment not found")
+
+    # 카테고리가 바뀌는 경우에만 소유권 검증 (setattr 전에)
+    if updated_data.category_id != t.category_id:
+        _get_owned_category_or_404(db, updated_data.category_id, current_user.id)
 
     for key, value in updated_data.dict(exclude_unset=True).items():
         setattr(t, key, value)
