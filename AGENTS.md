@@ -4,7 +4,8 @@
 
 ## 절대 금지
 - dev·main 브랜치에 직접 push/commit 금지. 항상 새 브랜치 → PR.
-  - 이 레포는 **dev에 머지되면 바로 운영 서버에 배포된다** (.github/workflows/deploy.yml).
+  - **main에 머지되면 바로 운영 서버(Lightsail)에 배포된다** (.github/workflows/deploy-production.yml).
+  - **dev에 머지되면 바로 베타 서버(OCI)에 배포된다** (.github/workflows/deploy-beta.yml).
 - 운영 DB·운영 서버(IP 포함)에 접속하거나 그 값을 코드/문서에 쓰지 않는다. 로컬 개발 DB(Docker `gopssl-dev-db`)만 사용한다.
 - .env, .env.* 커밋 금지. 비밀번호·토큰·개인정보를 커밋/로그에 남기지 않는다.
 - .github/workflows/ 와 배포 설정은 티켓에 명시된 경우에만 수정한다.
