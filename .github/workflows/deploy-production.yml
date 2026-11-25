@@ -1,0 +1,116 @@
+# .github/workflows/deploy-production.yml
+#
+# 운영 서버(Lightsail, api.gopssl.com, DB = Supabase) 자동 배포
+# - main 에 push(머지)되면 main 을 배포
+# - Actions 탭 → "Deploy to Production (Lightsail)" → "Run workflow" 로 수동 재배포
+#   (수동 실행도 항상 main 만 배포한다. 운영에 다른 브랜치를 올리지 않기 위함)
+#
+# 필요한 Secret: BETA_HOST, BETA_USER, BETA_SSH_KEY
+#   - 이름은 예전(Lightsail = 베타) 그대로지만, 2026-11 전환 이후 Lightsail 은 운영이다.
+#   - 이름 변경(LIGHTSAIL_*)은 별도 작업으로 진행한다.
+# 서버의 .env(untracked)는 git checkout -B / reset 으로 바뀌지 않는다.
+# systemd 서비스: gopssl, 포트: 8001
+
+name: Deploy to Production (Lightsail)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# 동시 실행 방지: 진행 중인 배포는 취소하지 않고, 다음 실행은 끝날 때까지 대기
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  BRANCH: main
+  APP_DIR: /home/ubuntu/gopssl-backend
+  SERVICE_NAME: gopssl
+  APP_PORT: "8001"
+  HEALTH_TIMEOUT_SECONDS: "30"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # 1. 배포 대상 커밋 확인 (서버 접속 전)
+      - name: Resolve commit
+        id: target
+        env:
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+        run: |
+          set -euo pipefail
+          COMMIT="$(git ls-remote --heads "$REPO_URL" "refs/heads/$BRANCH" | cut -f1)"
+          if [ -z "$COMMIT" ]; then
+            echo "::error::원격에 브랜치가 없습니다: $BRANCH"
+            exit 1
+          fi
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+          echo "배포 대상: $BRANCH ($COMMIT)"
+
+      # 2. 운영 서버에서 코드 갱신 → 의존성 설치 → 재시작 → 로컬 헬스 체크
+      #    venv/bin/pip 가 없으면 코드·서비스를 건드리기 전에 실패한다.
+      #    헬스 체크는 /docs (앱에 / 와 /health 라우트가 없음). DB 연결은 확인하지 않는다.
+      - name: SSH into Production and Deploy
+        id: deploy
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.BETA_HOST }}
+          username: ${{ secrets.BETA_USER }}
+          key: ${{ secrets.BETA_SSH_KEY }}
+          port: 22
+          envs: BRANCH,APP_DIR,SERVICE_NAME,APP_PORT,HEALTH_TIMEOUT_SECONDS
+          capture_stdout: true
+          script: |
+            set -eu
+            cd "$APP_DIR"
+            if [ ! -x venv/bin/pip ]; then
+              echo "venv/bin/pip 가 없습니다: $APP_DIR/venv (재시작하지 않고 중단)"
+              exit 1
+            fi
+            git fetch origin
+            git checkout -B "$BRANCH" "origin/$BRANCH"
+            venv/bin/pip install -r requirements.txt
+            sudo -n systemctl restart "$SERVICE_NAME"
+
+            HEALTH_URL="http://127.0.0.1:$APP_PORT/docs"
+            deadline=$(( $(date +%s) + HEALTH_TIMEOUT_SECONDS ))
+            until curl -fsS -o /dev/null --max-time 5 "$HEALTH_URL"; do
+              if [ "$(date +%s)" -ge "$deadline" ]; then
+                echo "헬스 체크 실패: ${HEALTH_TIMEOUT_SECONDS}초 안에 $HEALTH_URL 응답 없음"
+                sudo -n systemctl status "$SERVICE_NAME" --no-pager || true
+                exit 1
+              fi
+              echo "헬스 체크 대기 중... ($HEALTH_URL)"
+              sleep 3
+            done
+            echo "헬스 체크 성공 ($HEALTH_URL)"
+            echo "DEPLOYED_COMMIT=$(git rev-parse HEAD)"
+
+      # 3. 배포 결과 출력
+      - name: Deployment summary
+        if: always() && steps.target.outputs.commit != ''
+        env:
+          EXPECTED_COMMIT: ${{ steps.target.outputs.commit }}
+          SSH_STDOUT: ${{ steps.deploy.outputs.stdout }}
+        run: |
+          DEPLOYED_COMMIT="$(printf '%s\n' "$SSH_STDOUT" | sed -n 's/^DEPLOYED_COMMIT=//p' | tail -1)"
+          echo "브랜치: $BRANCH"
+          echo "요청 시점 원격 커밋: $EXPECTED_COMMIT"
+          echo "서버 배포 커밋: ${DEPLOYED_COMMIT:-(확인 불가)}"
+          {
+            echo "### 운영 배포 (Lightsail)"
+            echo "- 브랜치: \`$BRANCH\`"
+            echo "- 요청 시점 원격 커밋: \`$EXPECTED_COMMIT\`"
+            echo "- 서버 배포 커밋: \`${DEPLOYED_COMMIT:-확인 불가}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$DEPLOYED_COMMIT" ] && [ "$DEPLOYED_COMMIT" != "$EXPECTED_COMMIT" ]; then
+            echo "::warning::요청 이후 브랜치에 새 커밋이 push 되어 서버 커밋이 다릅니다."
+          fi

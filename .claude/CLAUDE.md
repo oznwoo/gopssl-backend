@@ -13,8 +13,13 @@
 - 언어/프레임워크: Python 3.13 + FastAPI
 - DB: PostgreSQL (SQLAlchemy ORM)
 - 인증: JWT (jose) + bcrypt
-- 배포: Oracle Cloud (OCI) — GitHub Actions (`dev` 브랜치 push 시 자동 배포)
-- 서비스: systemd (`gopssl.service`)
+- 배포: GitHub Actions — 브랜치에 머지(push)되면 자동 배포
+  | 브랜치 | 환경 | 서버 | DB | 도메인 | systemd | 워크플로 |
+  |--------|------|------|----|--------|---------|----------|
+  | `main` | 운영 | AWS Lightsail | Supabase (서울) | api.gopssl.com | `gopssl` (8001) | `deploy-production.yml` |
+  | `dev` | 베타 | Oracle Cloud (OCI) | OCI 내부 Docker Postgres 17 (127.0.0.1:5432) | dev-api.gopssl.com | `gopssl-beta` (8000) | `deploy-beta.yml` |
+- 수동 배포: GitHub Actions 탭 → 해당 워크플로 → "Run workflow" (운영은 항상 main, 베타는 브랜치 선택 가능)
+- 베타(OCI) venv: `~/Gopssl-Backend/venv` (Python 3.12)
 
 ## 디렉터리 구조
 
@@ -55,7 +60,8 @@ Gopssl-Backend/
 │   └── address.py           # /address (카카오 주소 검색)
 │
 └── .github/workflows/
-    └── deploy.yml           # OCI 자동 배포 (dev 브랜치)
+    ├── deploy-production.yml # 운영 자동 배포 (main → Lightsail)
+    └── deploy-beta.yml       # 베타 자동 배포 (dev → OCI)
 ```
 
 ## 환경변수 (.env)
