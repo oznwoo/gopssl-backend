@@ -1,13 +1,14 @@
 # .github/workflows/deploy-beta.yml
 #
-# 베타 서버(Lightsail, dev-api.gopssl.com) 자동 배포
+# 베타 서버(OCI, dev-api.gopssl.com, DB = OCI 내부 Postgres) 자동 배포
 # - dev 에 push(머지)되면 dev 를 배포
-# - Actions 탭의 "Run workflow" 버튼(workflow_dispatch)으로 원하는 브랜치를 골라 배포
+# - Actions 탭 → "Deploy to Beta (OCI)" → "Run workflow" 에서 브랜치를 골라 배포
 #
-# 필요한 Secret: BETA_HOST, BETA_USER, BETA_SSH_KEY
-# 서버의 .env(untracked)는 git reset --hard 로 바뀌지 않는다.
+# 필요한 Secret: OCI_SSH_HOST, OCI_SSH_USER, OCI_SSH_KEY
+# 서버의 .env(untracked)는 git checkout -B / reset 으로 바뀌지 않는다.
+# systemd 서비스명(gopssl.service)·포트(8000)는 서버에 있는 값을 그대로 쓴다.
 
-name: Deploy to Beta (Lightsail)
+name: Deploy to Beta (OCI)
 
 on:
   push:
@@ -30,9 +31,9 @@ permissions:
   contents: read
 
 env:
-  APP_DIR: /home/ubuntu/gopssl-backend
-  SERVICE_NAME: gopssl-beta
-  HEALTH_URL: https://dev-api.gopssl.com/docs
+  APP_DIR: Gopssl-Backend # 서버 사용자 홈 디렉터리 기준
+  SERVICE_NAME: gopssl.service
+  APP_PORT: "8000"
   HEALTH_TIMEOUT_SECONDS: "30"
 
 jobs:
@@ -75,50 +76,48 @@ jobs:
           echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
           echo "배포 대상: $BRANCH ($COMMIT)"
 
-      # 2. 베타 서버에서 코드 갱신 → 의존성 설치 → 재시작
+      # 2. 베타 서버에서 코드 갱신 → 의존성 설치 → 재시작 → 로컬 헬스 체크
+      #    venv/bin/pip 가 없으면 코드·서비스를 건드리기 전에 실패한다.
+      #    헬스 체크는 /docs (앱에 / 와 /health 라우트가 없음). DB 연결은 확인하지 않는다.
       - name: SSH into Beta and Deploy
         id: deploy
         uses: appleboy/ssh-action@master
         env:
           BRANCH: ${{ steps.target.outputs.branch }}
         with:
-          host: ${{ secrets.BETA_HOST }}
-          username: ${{ secrets.BETA_USER }}
-          key: ${{ secrets.BETA_SSH_KEY }}
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
           port: 22
-          envs: BRANCH,APP_DIR,SERVICE_NAME
+          envs: BRANCH,APP_DIR,SERVICE_NAME,APP_PORT,HEALTH_TIMEOUT_SECONDS
           capture_stdout: true
           script: |
             set -eu
-            cd "$APP_DIR"
+            cd "$HOME/$APP_DIR"
+            if [ ! -x venv/bin/pip ]; then
+              echo "venv/bin/pip 가 없습니다: $HOME/$APP_DIR/venv (재시작하지 않고 중단)"
+              exit 1
+            fi
             git fetch origin
-            git checkout "$BRANCH"
-            git reset --hard "origin/$BRANCH"
+            git checkout -B "$BRANCH" "origin/$BRANCH"
             venv/bin/pip install -r requirements.txt
             sudo -n systemctl restart "$SERVICE_NAME"
-            echo "DEPLOYED_BRANCH=$(git rev-parse --abbrev-ref HEAD)"
+
+            HEALTH_URL="http://127.0.0.1:$APP_PORT/docs"
+            deadline=$(( $(date +%s) + HEALTH_TIMEOUT_SECONDS ))
+            until curl -fsS -o /dev/null --max-time 5 "$HEALTH_URL"; do
+              if [ "$(date +%s)" -ge "$deadline" ]; then
+                echo "헬스 체크 실패: ${HEALTH_TIMEOUT_SECONDS}초 안에 $HEALTH_URL 응답 없음"
+                sudo -n systemctl status "$SERVICE_NAME" --no-pager || true
+                exit 1
+              fi
+              echo "헬스 체크 대기 중... ($HEALTH_URL)"
+              sleep 3
+            done
+            echo "헬스 체크 성공 ($HEALTH_URL)"
             echo "DEPLOYED_COMMIT=$(git rev-parse HEAD)"
 
-      # 3. 헬스 체크: 최대 HEALTH_TIMEOUT_SECONDS 동안 200 이 될 때까지 재시도
-      #    (/docs 는 앱 프로세스 기동만 확인하고 DB 연결은 확인하지 않는다)
-      - name: Health check
-        run: |
-          set -u
-          deadline=$(( SECONDS + HEALTH_TIMEOUT_SECONDS ))
-          code="000"
-          while [ "$SECONDS" -lt "$deadline" ]; do
-            code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$HEALTH_URL" || true)"
-            if [ "$code" = "200" ]; then
-              echo "헬스 체크 성공 ($HEALTH_URL → 200)"
-              exit 0
-            fi
-            echo "대기 중... (응답 코드: $code)"
-            sleep 3
-          done
-          echo "::error::헬스 체크 실패: ${HEALTH_TIMEOUT_SECONDS}초 안에 200 응답 없음 (마지막 응답 코드: $code)"
-          exit 1
-
-      # 4. 배포 결과 출력
+      # 3. 배포 결과 출력
       - name: Deployment summary
         if: always() && steps.target.outputs.branch != ''
         env:
@@ -131,7 +130,7 @@ jobs:
           echo "요청 시점 원격 커밋: $EXPECTED_COMMIT"
           echo "서버 배포 커밋: ${DEPLOYED_COMMIT:-(확인 불가)}"
           {
-            echo "### 베타 배포"
+            echo "### 베타 배포 (OCI)"
             echo "- 브랜치: \`$BRANCH\`"
             echo "- 요청 시점 원격 커밋: \`$EXPECTED_COMMIT\`"
             echo "- 서버 배포 커밋: \`${DEPLOYED_COMMIT:-확인 불가}\`"
