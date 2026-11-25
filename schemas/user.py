@@ -50,21 +50,31 @@ class UserCreate(BaseModel):
     return v
 
 
+# 프로필 수정용. 이메일·비밀번호는 현재 비밀번호를 확인하는 전용 API(POST /users/me/email, /password)로만 바꾼다.
+# 구버전 앱이 email·password를 같이 보내도 Pydantic 기본 동작(extra="ignore")으로 무시된다.
 class UserUpdate(BaseModel):
   name: Optional[str] = None
-  email: Optional[EmailStr] = None
-  password: Optional[str] = None
   store_name: Optional[str] = None
   address: Optional[str] = None
   address_detail: Optional[str] = None
   zip_code: Optional[str] = None
 
-  @field_validator("password")
+
+# 비밀번호 변경 요청 (POST /users/me/password)
+class PasswordChange(BaseModel):
+  current_password: str
+  new_password: str
+
+  @field_validator("new_password")
   @classmethod
-  def _check_password(cls, v: Optional[str]) -> Optional[str]:
-    if v is None:
-      return v
+  def _check_new_password(cls, v: str) -> str:
     return validate_password_rule(v)
+
+
+# 이메일(아이디) 변경 요청 (POST /users/me/email)
+class EmailChange(BaseModel):
+  current_password: str
+  new_email: EmailStr
 
 # 유저 조회 응답용 (출력 스키마)
 class UserRead(BaseModel):
